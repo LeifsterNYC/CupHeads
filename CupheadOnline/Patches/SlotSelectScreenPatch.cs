@@ -237,6 +237,15 @@ namespace CupheadOnline.Patches
             {
                 titleT.fontSize = sample.fontSize + 4;
                 titleT.color    = MpMenuState.SelColor(__instance);
+                titleT.horizontalOverflow = HorizontalWrapMode.Wrap;
+                titleT.verticalOverflow   = VerticalWrapMode.Overflow;
+                titleT.lineSpacing        = 1.1f;
+            }
+            var titleLE = titleGO.GetComponent<LayoutElement>();
+            if (titleLE != null)
+            {
+                titleLE.preferredHeight = 90f;
+                titleLE.preferredWidth  = 700f;
             }
 
             // Body — child of the VLG, not absolute
@@ -251,9 +260,15 @@ namespace CupheadOnline.Patches
                 sample.font, Mathf.Max(15, sample.fontSize - 3),
                 new Color(0.92f, 0.92f, 0.92f, 1f));
             var bodyT = bodyGO.GetComponent<Text>();
-            if (bodyT != null) bodyT.text = BODY;
+            if (bodyT != null)
+            {
+                bodyT.text = BODY;
+                bodyT.horizontalOverflow = HorizontalWrapMode.Wrap;
+                bodyT.verticalOverflow   = VerticalWrapMode.Overflow;
+                bodyT.lineSpacing        = 1.2f;
+            }
             var bodyLE = bodyGO.AddComponent<LayoutElement>();
-            bodyLE.preferredHeight = 110f;
+            bodyLE.preferredHeight = 160f;
             bodyLE.preferredWidth  = 700f;
 
             // Hint — child of the VLG

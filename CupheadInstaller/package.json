@@ -1,7 +1,7 @@
 {
-  "name": "cuphead-online-installer",
+  "name": "cupheads-installer",
   "version": "1.0.0",
-  "description": "Installer for the CupheadOnline multiplayer mod",
+  "description": "Installer for the Cupheads multiplayer mod",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,7 +10,7 @@
   },
   "build": {
     "appId": "com.cupheadonline.installer",
-    "productName": "CupheadOnline Installer",
+    "productName": "Cupheads",
     "win": {
       "target": [{ "target": "portable", "arch": ["x64"] }],
       "icon": "assets/cupheads.ico"
@@ -25,7 +25,7 @@
       "node_modules/**"
     ],
     "portable": {
-      "artifactName": "CupheadOnline-Installer.exe"
+      "artifactName": "Cupheads.exe"
     }
   },
   "dependencies": {
