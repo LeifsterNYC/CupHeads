@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.0 - 2026-04-17
+
+- Added optional boss HP scaling by active player count for battle levels, with a configurable per-extra-player modifier in the BepInEx config and the feature disabled by default.
+- Added character-aware session diagnostics and HUD details so sessions can report Cuphead, Mugman, and Ms. Chalice more clearly, including DLC-aware save summaries.
+- Added boss-scaling status to exported diagnostics and session panels so balancing issues are easier to verify and report.
+- Updated the README to document DLC character support, optional boss scaling, and the current hard limit that live gameplay still follows Cuphead's native two-player runtime.
+
 ## v1.1.1 - 2026-04-17
 
 - Upgraded the Electron installer so every install acts like a repair pass: it refreshes the bundled `CupheadOnline.dll`, repairs BepInEx only when needed, and verifies the final setup before finishing.

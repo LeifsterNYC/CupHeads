@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using CupheadOnline.UI;
 using CupheadOnline.Sync;
+using CupheadOnline.Diagnostics;
 
 namespace CupheadOnline.Patches
 {
@@ -879,16 +880,26 @@ namespace CupheadOnline.Patches
             SetMpItemLabel(
                 MpMenuState.JoinIndex,
                 Plugin.Net.IsConnected
-                    ? (Plugin.Net.IsHost ? "GUEST CONNECTED" : "CONNECTED")
+                    ? (Plugin.Net.IsHost
+                        ? (SessionSync.HasTrackedSave
+                            ? (SessionSync.IsRemoteReady ? "GUEST READY" : "WAIT READY")
+                            : "WAIT FOR SAVE")
+                        : (SessionSync.CanGuestToggleReady
+                            ? (SessionSync.IsLocalReady ? "UNREADY" : "READY UP")
+                            : "WAIT FOR SAVE"))
                     : _joinOverlayReady
                         ? "OPEN FRIENDS"
                         : TryGetClipboardLobbyId(out clipboardRaw, out clipboardLobbyId)
                             ? "JOIN CLIPBOARD"
                             : "JOIN GAME");
-            SetMpItemLabel(MpMenuState.InviteIndex, "INVITE FRIEND");
+            SetMpItemLabel(
+                MpMenuState.InviteIndex,
+                Plugin.Net.IsConnected
+                    ? (Plugin.Net.IsHost ? "SEND RESYNC" : "REQUEST RESYNC")
+                    : "INVITE FRIEND");
             SetMpItemLabel(MpMenuState.RetryIndex, Plugin.Net.GetRetryActionLabel());
             SetMpItemLabel(MpMenuState.CopyLobbyIndex, "COPY LOBBY ID");
-            SetMpItemLabel(MpMenuState.DiagnosticsIndex, "COPY DIAGNOSTICS");
+            SetMpItemLabel(MpMenuState.DiagnosticsIndex, "EXPORT BUG REPORT");
             SetMpItemLabel(MpMenuState.BackIndex,
                 Plugin.Net.IsConnected || Plugin.Net.IsInLobby ? "DISCONNECT" : "BACK");
         }
@@ -947,14 +958,24 @@ namespace CupheadOnline.Patches
                 case MpMenuState.JoinIndex:
                     if (Plugin.Net.IsConnected)
                     {
+                        if (Plugin.Net.IsHost)
+                            return SessionSync.HasTrackedSave
+                                ? (SessionSync.IsRemoteReady
+                                    ? "Guest is ready. Start the run whenever you want."
+                                    : "Guest still needs to ready up for the selected save.")
+                                : "Pick a save first so the guest can review it.";
+
                         if (SessionSync.DesyncSeverity >= SessionIssueSeverity.Warning)
                             return SessionSync.DesyncSummary;
-                        if (SessionSync.CompatibilitySeverity >= SessionIssueSeverity.Warning)
+                        if (SessionSync.CompatibilitySeverity >= SessionIssueSeverity.Error)
                             return SessionSync.CompatibilitySummary;
 
-                        return Plugin.Net.IsHost
-                            ? "Your guest is connected. Use OPEN SAVE SLOT when you are ready."
-                            : "Stay here while the host opens a save slot.";
+                        if (!SessionSync.HasTrackedSave)
+                            return "Stay here while the host picks a save.";
+
+                        return SessionSync.IsLocalReady
+                            ? "You are ready. Wait for the host to start the run."
+                            : "Confirm you are ready for the selected save and loadout.";
                     }
                     if (_joinOverlayReady)
                         return "Open Steam Friends and wait for the host invite.";
@@ -965,6 +986,10 @@ namespace CupheadOnline.Patches
                     return "Wait for a Steam invite, or copy a lobby ID to the clipboard to join directly.";
 
                 case MpMenuState.InviteIndex:
+                    if (Plugin.Net.IsConnected)
+                        return Plugin.Net.IsHost
+                            ? "Send a fresh sync bundle and boss-priority burst to the guest."
+                            : "Ask the host to resend the current session state.";
                     return Plugin.Net.CanInviteFriend
                         ? "Open Steam's invite dialog for the current lobby."
                         : "Available once you host a lobby.";
@@ -980,7 +1005,7 @@ namespace CupheadOnline.Patches
                         : "Available once a lobby exists.";
 
                 case MpMenuState.DiagnosticsIndex:
-                    return "Copy version, Steam status, lobby info, ping, and the last error for bug reports.";
+                    return "Export a bug report folder with diagnostics, logs, and config files.";
 
                 default:
                     return Plugin.Net.IsConnected || Plugin.Net.IsInLobby
@@ -1009,14 +1034,14 @@ namespace CupheadOnline.Patches
 
                 case MpMenuState.JoinIndex:
                     if (Plugin.Net.IsConnected)
-                        return false;
+                        return !Plugin.Net.IsHost && SessionSync.CanGuestToggleReady;
                     return !_waitingForInvite
                         && !Plugin.Net.IsInputLocked
                         && !Plugin.Net.IsConnected
                         && !Plugin.Net.IsInLobby;
 
                 case MpMenuState.InviteIndex:
-                    return Plugin.Net.CanInviteFriend;
+                    return Plugin.Net.IsConnected ? Plugin.Net.CanRequestRecovery : Plugin.Net.CanInviteFriend;
 
                 case MpMenuState.RetryIndex:
                     return !_waitingForInvite
@@ -1143,13 +1168,27 @@ namespace CupheadOnline.Patches
                     case MpMenuState.JoinIndex:
                         if (IsItemAvailable(MpMenuState.JoinIndex))
                         {
-                            if (!HandleJoinAccept())
+                            if (Plugin.Net.IsConnected)
+                            {
+                                MpMenuState.SetStatus(SessionSync.ToggleGuestReady(), animate: false);
+                            }
+                            else if (!HandleJoinAccept())
+                            {
                                 OnJoinGame(inst);
+                            }
                         }
                         else
                         {
                             MpMenuState.SetStatus(
-                                _waitingForInvite
+                                Plugin.Net.IsConnected
+                                    ? (Plugin.Net.IsHost
+                                        ? (SessionSync.HasTrackedSave
+                                            ? (SessionSync.IsRemoteReady
+                                                ? "Guest is already ready."
+                                                : "Guest still needs to ready up.")
+                                            : "Pick a save first.")
+                                        : SessionSync.CompatibilitySummary)
+                                : _waitingForInvite
                                     ? "Waiting for a Steam invite..."
                                     : Plugin.Net.IsInLobby || Plugin.Net.IsConnected
                                         ? "Leave the current session before joining another lobby."
@@ -1159,7 +1198,16 @@ namespace CupheadOnline.Patches
                         break;
 
                     case MpMenuState.InviteIndex:
-                        OnInviteFriend();
+                        if (Plugin.Net.IsConnected)
+                        {
+                            string status;
+                            Plugin.Net.TryRequestRecovery(out status);
+                            MpMenuState.SetStatus(status, animate: false);
+                        }
+                        else
+                        {
+                            OnInviteFriend();
+                        }
                         break;
 
                     case MpMenuState.RetryIndex:
@@ -1171,7 +1219,7 @@ namespace CupheadOnline.Patches
                         break;
 
                     case MpMenuState.DiagnosticsIndex:
-                        OnCopyDiagnostics();
+                        OnExportBugReport();
                         break;
                 }
             }
@@ -1486,10 +1534,11 @@ namespace CupheadOnline.Patches
             MpMenuState.SetStatus(status, animate: false);
         }
 
-        static void OnCopyDiagnostics()
+        static void OnExportBugReport()
         {
-            GUIUtility.systemCopyBuffer = Plugin.BuildDiagnosticsReport();
-            MpMenuState.SetStatus("Diagnostics copied to clipboard.", animate: false);
+            string folder = BugReportExporter.Export();
+            GUIUtility.systemCopyBuffer = folder;
+            MpMenuState.SetStatus("Bug report exported to:\n" + folder, animate: false);
         }
 
         // ── Join timeout + second-press overlay flow ──────────────────────────

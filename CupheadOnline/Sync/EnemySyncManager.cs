@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.Generic;
 using UnityEngine;
 using CupheadOnline.Net;
 
@@ -20,10 +21,19 @@ namespace CupheadOnline.Sync
     {
         private static int   _broadcastCounter;
         private const  int   BROADCAST_EVERY = 3; // frames (= 20 Hz at 60 Hz FixedUpdate)
+        private static int   _recoveryBurstFrames;
 
         // Reflection cache for enemy HP field
         private static FieldInfo _hpField;
         private static bool      _hpFieldSearched;
+        private static readonly Dictionary<int, EnemySnapshotState> _lastSent = new Dictionary<int, EnemySnapshotState>();
+
+        private struct EnemySnapshotState
+        {
+            public float Hp;
+            public byte Phase;
+            public Vector3 Position;
+        }
 
         // ──────────────────────────────────────────────────────────────────────
         //  HOST side: called every FixedUpdate from Plugin.Update indirectly via
@@ -35,11 +45,18 @@ namespace CupheadOnline.Sync
         {
             if (!MultiplayerSession.IsHost || !Plugin.Net.IsConnected) return;
 
-            _broadcastCounter++;
-            if (_broadcastCounter < BROADCAST_EVERY) return;
-            _broadcastCounter = 0;
+            var enemies = Object.FindObjectsOfType<DamageReceiver>();
+            int enemyCount = CountEnemies(enemies);
+            bool bossPriorityMode = _recoveryBurstFrames > 0 || enemyCount <= 3;
 
-            foreach (var dr in Object.FindObjectsOfType<DamageReceiver>())
+            _broadcastCounter++;
+            int broadcastEvery = bossPriorityMode ? 1 : BROADCAST_EVERY;
+            if (_broadcastCounter < broadcastEvery) return;
+            _broadcastCounter = 0;
+            if (_recoveryBurstFrames > 0)
+                _recoveryBurstFrames--;
+
+            foreach (var dr in enemies)
             {
                 if (dr.type != DamageReceiver.Type.Enemy) continue;
                 var go = dr.gameObject;
@@ -51,6 +68,8 @@ namespace CupheadOnline.Sync
                 if (anim != null)
                     hash = anim.GetCurrentAnimatorStateInfo(0).fullPathHash;
 
+                bool priority = bossPriorityMode || IsBossPriority(go, phase, enemyCount);
+
                 var pkt = new EnemyStatePacket
                 {
                     InstanceId = go.GetInstanceID(),
@@ -61,7 +80,15 @@ namespace CupheadOnline.Sync
                     AnimHash   = hash,
                     Tick       = MultiplayerSession.Tick,
                 };
-                Plugin.Net.SendEnemyState(ref pkt);
+
+                bool reliable = priority && ShouldSendReliableDelta(pkt);
+                Plugin.Net.SendEnemyState(ref pkt, reliable);
+                _lastSent[pkt.InstanceId] = new EnemySnapshotState
+                {
+                    Hp = pkt.Hp,
+                    Phase = pkt.Phase,
+                    Position = go.transform.position,
+                };
             }
         }
 
@@ -80,10 +107,11 @@ namespace CupheadOnline.Sync
             var go = dr.gameObject;
 
             // ── Position: gentle lerp to avoid visual snap ────────────────────
-            go.transform.position = Vector3.Lerp(
-                go.transform.position,
-                new Vector3(pkt.PosX, pkt.PosY, go.transform.position.z),
-                0.3f);
+            var targetPos = new Vector3(pkt.PosX, pkt.PosY, go.transform.position.z);
+            float distance = Vector3.Distance(go.transform.position, targetPos);
+            go.transform.position = distance > 6f
+                ? targetPos
+                : Vector3.Lerp(go.transform.position, targetPos, 0.3f);
 
             // ── HP correction ─────────────────────────────────────────────────
             SetEnemyHp(dr, pkt.Hp);
@@ -103,6 +131,13 @@ namespace CupheadOnline.Sync
         public static void Reset()
         {
             _broadcastCounter = 0;
+            _recoveryBurstFrames = 0;
+            _lastSent.Clear();
+        }
+
+        public static void TriggerRecoveryBurst(int frames = 150)
+        {
+            _recoveryBurstFrames = Mathf.Max(_recoveryBurstFrames, frames);
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -161,6 +196,60 @@ namespace CupheadOnline.Sync
                 }
             }
             return 0;
+        }
+
+        static int CountEnemies(DamageReceiver[] receivers)
+        {
+            int count = 0;
+            for (int i = 0; i < receivers.Length; i++)
+            {
+                if (receivers[i] != null && receivers[i].type == DamageReceiver.Type.Enemy)
+                    count++;
+            }
+            return count;
+        }
+
+        static bool ShouldSendReliableDelta(EnemyStatePacket pkt)
+        {
+            EnemySnapshotState previous;
+            if (!_lastSent.TryGetValue(pkt.InstanceId, out previous))
+                return true;
+
+            if (previous.Phase != pkt.Phase)
+                return true;
+            if (Mathf.Abs(previous.Hp - pkt.Hp) >= 0.5f)
+                return true;
+
+            var prevPos = previous.Position;
+            float dx = prevPos.x - pkt.PosX;
+            float dy = prevPos.y - pkt.PosY;
+            return (dx * dx + dy * dy) >= 16f;
+        }
+
+        static bool IsBossPriority(GameObject go, byte phase, int enemyCount)
+        {
+            if (phase > 0)
+                return true;
+            if (enemyCount <= 3)
+                return true;
+            if (go == null)
+                return false;
+
+            string name = go.name.ToLowerInvariant();
+            return name.Contains("boss")
+                || name.Contains("baroness")
+                || name.Contains("dragon")
+                || name.Contains("robot")
+                || name.Contains("saltbaker")
+                || name.Contains("dice")
+                || name.Contains("devil")
+                || name.Contains("pirate")
+                || name.Contains("train")
+                || name.Contains("genie")
+                || name.Contains("clown")
+                || name.Contains("flower")
+                || name.Contains("blimp")
+                || name.Contains("bee");
         }
     }
 }

@@ -281,12 +281,17 @@ namespace CupheadOnline.UI
                 }
 
                 string line = (Plugin.Net.IsHost ? "HOST" : "CLIENT")
+                    + " "
+                    + MultiplayerSession.GetLocalCharacterName()
                     + " | "
                     + ShortenPeerName(Plugin.Net.CurrentPeerName);
 
                 string lobbyId = ShortLobbyId(Plugin.Net.CurrentLobbyId);
                 if (!string.IsNullOrEmpty(lobbyId))
                     line += " | #" + lobbyId;
+
+                if (Plugin.BossHpScalingEnabled && BossHealthScaler.CurrentMultiplier > 1.0001f)
+                    line += " | HP x" + BossHealthScaler.CurrentMultiplier.ToString("0.00");
 
                 line += " | " + FormatElapsed(Time.unscaledTime - _connectedAt);
 

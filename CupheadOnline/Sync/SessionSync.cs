@@ -26,10 +26,18 @@ namespace CupheadOnline.Sync
         private static bool _trackedSaveEmpty;
         private static bool _hasTrackedSave;
         private static bool _hasCompletedHandshake;
+        private static ushort _saveRevision;
+
+        private static bool _localGuestReady;
+        private static bool _remoteGuestReady;
 
         private static float _nextHostSnapshotAt;
         private static float _lastHostSnapshotAt = -1f;
+        private static float _lastRecoveryRequestedAt = -1f;
+        private static float _lastRecoveryBundleAt = -1f;
         private static int _sceneMismatchStreak;
+        private static int _recoveryRequestCount;
+        private static int _recoveryBundleCount;
 
         private static string _compatibilitySummary = "Compatibility: waiting for host save.";
         private static SessionIssueSeverity _compatibilitySeverity = SessionIssueSeverity.Info;
@@ -54,6 +62,16 @@ namespace CupheadOnline.Sync
         public static int LocalDeaths => _localDeaths;
         public static int LocalRetries => _localRetries;
         public static int LocalParries => _localParries;
+        public static bool HasTrackedSave => _hasTrackedSave;
+        public static ushort SaveRevision => _saveRevision;
+        public static bool IsLocalReady => MultiplayerSession.IsHost ? _hasTrackedSave : _localGuestReady;
+        public static bool IsRemoteReady => MultiplayerSession.IsHost ? _remoteGuestReady : _hasTrackedSave;
+        public static bool CanGuestToggleReady =>
+            Plugin.Net != null
+         && Plugin.Net.IsConnected
+         && !MultiplayerSession.IsHost
+         && _hasTrackedSave
+         && _compatibilitySeverity < SessionIssueSeverity.Error;
 
         public static void Update()
         {
@@ -81,9 +99,13 @@ namespace CupheadOnline.Sync
             _desyncSeverity = SessionIssueSeverity.None;
             _sceneMismatchStreak = 0;
             _nextHostSnapshotAt = Time.unscaledTime + 0.25f;
+            _lastHostSnapshotAt = -1f;
+            _lastRecoveryRequestedAt = -1f;
 
             if (isHost)
             {
+                _remoteGuestReady = false;
+
                 if (!_hasTrackedSave)
                 {
                     string sceneName = GetActiveSceneName();
@@ -94,6 +116,8 @@ namespace CupheadOnline.Sync
                         _trackedMapScene = PlayerData.Data != null ? PlayerData.Data.CurrentMap : Scenes.scene_map_world_1;
                         _trackedSaveEmpty = false;
                         _hasTrackedSave = true;
+                        if (_saveRevision == 0)
+                            _saveRevision = 1;
                     }
                 }
 
@@ -103,25 +127,33 @@ namespace CupheadOnline.Sync
                     BroadcastSelectedSaveProfile();
                 }
 
-                BroadcastSessionSnapshot(true);
-            }
-            else if (_hasTrackedSave)
-            {
-                BroadcastGuestSaveProfile();
+                BroadcastRecoveryBundle("Peer connected.");
             }
             else
             {
-                _compatibilitySummary = "Compatibility: waiting for host save.";
-                _compatibilitySeverity = SessionIssueSeverity.Info;
+                _localGuestReady = false;
+                if (_hasTrackedSave)
+                    BroadcastGuestSaveProfile();
+                else
+                {
+                    _compatibilitySummary = "Compatibility: waiting for host save.";
+                    _compatibilitySeverity = SessionIssueSeverity.Info;
+                }
             }
         }
 
         public static void RecordSelectedSave(ref SaveSlotSyncPacket pkt)
         {
+            if (pkt.SaveRevision == 0)
+                pkt.SaveRevision = NextSaveRevision();
+            else
+                _saveRevision = pkt.SaveRevision;
+
             _trackedSaveSlot = pkt.SlotIndex;
             _trackedMapScene = (Scenes)pkt.CurrentMapScene;
             _trackedSaveEmpty = pkt.IsEmpty;
             _hasTrackedSave = true;
+            _remoteGuestReady = false;
 
             CaptureLocalSaveProfile(pkt.SlotIndex, pkt.IsEmpty);
             EvaluateCompatibility();
@@ -133,6 +165,8 @@ namespace CupheadOnline.Sync
             _trackedMapScene = (Scenes)pkt.CurrentMapScene;
             _trackedSaveEmpty = pkt.IsEmpty;
             _hasTrackedSave = true;
+            _saveRevision = pkt.SaveRevision == 0 ? (ushort)1 : pkt.SaveRevision;
+            _localGuestReady = false;
 
             CaptureLocalSaveProfile(pkt.SlotIndex, pkt.IsEmpty);
             BroadcastGuestSaveProfile();
@@ -157,7 +191,166 @@ namespace CupheadOnline.Sync
         {
             _lastHostSnapshot = pkt;
             _lastHostSnapshotAt = Time.unscaledTime;
+            if (pkt.SaveRevision != 0)
+                _saveRevision = pkt.SaveRevision;
             EvaluateDesync();
+        }
+
+        public static void ApplySessionSignal(SessionSignalPacket pkt)
+        {
+            switch (pkt.Kind)
+            {
+                case SessionSignalKind.GuestReady:
+                    if (!MultiplayerSession.IsHost) return;
+                    _remoteGuestReady = _hasTrackedSave && pkt.SaveRevision == _saveRevision;
+                    Plugin.Log.LogInfo(
+                        _remoteGuestReady
+                            ? "[Session] Guest readied up for save revision " + _saveRevision + "."
+                            : "[Session] Ignored stale guest ready signal for revision " + pkt.SaveRevision + ".");
+                    break;
+
+                case SessionSignalKind.GuestUnready:
+                    if (!MultiplayerSession.IsHost) return;
+                    _remoteGuestReady = false;
+                    Plugin.Log.LogInfo("[Session] Guest marked not ready.");
+                    break;
+
+                case SessionSignalKind.RequestRecovery:
+                    if (!MultiplayerSession.IsHost) return;
+                    _recoveryRequestCount++;
+                    BroadcastRecoveryBundle("Guest requested a resync.");
+                    break;
+            }
+        }
+
+        public static bool CanHostStartRun(out string reason)
+        {
+            reason = string.Empty;
+
+            if (Plugin.Net == null || !Plugin.Net.IsConnected || !MultiplayerSession.IsHost)
+                return true;
+
+            if (!_hasTrackedSave)
+            {
+                reason = "Choose a save slot first.";
+                return false;
+            }
+
+            if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+            {
+                reason = _compatibilitySummary;
+                return false;
+            }
+
+            if (!_remoteGuestReady)
+            {
+                reason = "Guest has not readied up for this save yet.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public static string ToggleGuestReady()
+        {
+            if (Plugin.Net == null || !Plugin.Net.IsConnected)
+                return "Connect to a host first.";
+            if (MultiplayerSession.IsHost)
+                return "The host is ready automatically when a save is selected.";
+            if (!_hasTrackedSave)
+                return "Wait for the host to pick a save first.";
+            if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+            {
+                if (_localGuestReady)
+                    UpdateLocalGuestReady(false, true);
+                return _compatibilitySummary;
+            }
+
+            UpdateLocalGuestReady(!_localGuestReady, true);
+            return _localGuestReady
+                ? "Ready confirmed. Waiting for the host to start."
+                : "Marked not ready.";
+        }
+
+        public static string RequestRecovery()
+        {
+            if (Plugin.Net == null || !Plugin.Net.IsConnected)
+                return "Connect first before asking for a resync.";
+
+            if (MultiplayerSession.IsHost)
+            {
+                BroadcastRecoveryBundle("Host requested a fresh resync.");
+                return "Sent a fresh recovery bundle to the guest.";
+            }
+
+            var pkt = new SessionSignalPacket
+            {
+                Signal = (byte)SessionSignalKind.RequestRecovery,
+                SaveRevision = _saveRevision,
+            };
+            Plugin.Net.SendSessionSignal(ref pkt);
+            _lastRecoveryRequestedAt = Time.unscaledTime;
+            return "Requested a resync from the host.";
+        }
+
+        public static void BroadcastSelectedSaveProfile()
+        {
+            if (!_hasTrackedSave || Plugin.Net == null || !Plugin.Net.IsConnected)
+                return;
+
+            BroadcastSaveProfile(_trackedSaveSlot, _trackedMapScene, _trackedSaveEmpty);
+        }
+
+        public static void BroadcastGuestSaveProfile()
+        {
+            if (!_hasTrackedSave || Plugin.Net == null || !Plugin.Net.IsConnected || MultiplayerSession.IsHost)
+                return;
+
+            BroadcastSaveProfile(_trackedSaveSlot, _trackedMapScene, _trackedSaveEmpty);
+        }
+
+        public static void BroadcastSessionSnapshot(bool reliable)
+        {
+            if (Plugin.Net == null || !Plugin.Net.IsConnected || !MultiplayerSession.IsHost)
+                return;
+
+            var pkt = new SessionSnapshotPacket
+            {
+                SaveSlotIndex = _hasTrackedSave ? _trackedSaveSlot : byte.MaxValue,
+                Flags = BuildSnapshotFlags(),
+                SaveRevision = _saveRevision,
+                CurrentLevel = Level.Current != null ? (int)Level.Current.CurrentLevel : -1,
+                CurrentMapScene = PlayerData.Data != null ? (int)PlayerData.Data.CurrentMap : -1,
+                HostTick = MultiplayerSession.Tick,
+                SceneName = GetActiveSceneName(),
+            };
+
+            Plugin.Net.SendSessionSnapshot(ref pkt, reliable);
+        }
+
+        public static void BroadcastRecoveryBundle(string reason)
+        {
+            if (Plugin.Net == null || !Plugin.Net.IsConnected || !MultiplayerSession.IsHost)
+                return;
+
+            if (_hasTrackedSave)
+                BroadcastSelectedSaveProfile();
+
+            var start = new SessionStartPacket
+            {
+                Flags = (byte)((Level.Current != null ? 1 : 0) | (_hasTrackedSave ? 2 : 0)),
+                CurrentLevel = Level.Current != null ? (int)Level.Current.CurrentLevel : -1,
+                SaveRevision = _saveRevision,
+                CurrentTick = MultiplayerSession.Tick,
+                RngSeed = RngSync.CurrentSeed,
+            };
+            Plugin.Net.SendSessionStart(ref start);
+            BroadcastSessionSnapshot(true);
+            EnemySyncManager.TriggerRecoveryBurst();
+
+            _recoveryBundleCount++;
+            _lastRecoveryBundleAt = Time.unscaledTime;
+            Plugin.Log.LogInfo("[Session] Recovery bundle sent. Reason: " + reason);
         }
 
         public static void RecordLocalDeath()
@@ -189,10 +382,11 @@ namespace CupheadOnline.Sync
                 {
                     if (!_hasTrackedSave)
                         return "Guest connected - press Start to choose a save";
-
-                    return _compatibilitySeverity >= SessionIssueSeverity.Warning
-                        ? "Save synced - review compatibility warning"
-                        : "Save synced - start the run when ready";
+                    if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+                        return _compatibilitySummary;
+                    if (!_remoteGuestReady)
+                        return "Save synced - waiting for guest ready";
+                    return "Guest ready - start the run when ready";
                 }
 
                 if (!_hasTrackedSave)
@@ -200,10 +394,11 @@ namespace CupheadOnline.Sync
 
                 if (_desyncSeverity >= SessionIssueSeverity.Warning)
                     return _desyncSummary;
-
-                return _compatibilitySeverity >= SessionIssueSeverity.Warning
-                    ? _compatibilitySummary
-                    : "Host save synced - following host";
+                if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+                    return _compatibilitySummary;
+                return _localGuestReady
+                    ? "Ready - waiting for host to start"
+                    : "Save synced - press READY when prepared";
             }
 
             if (Plugin.Net.IsInLobby)
@@ -227,9 +422,19 @@ namespace CupheadOnline.Sync
             }
 
             if (Plugin.Net.IsHost)
-                return _hasTrackedSave ? "HOST READY" : "WAITING FOR SAVE";
+            {
+                if (!_hasTrackedSave)
+                    return "WAITING FOR SAVE";
+                if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+                    return "SAVE BLOCKED";
+                return _remoteGuestReady ? "READY TO START" : "WAITING FOR GUEST";
+            }
 
-            return _hasTrackedSave ? "FOLLOWING HOST" : "WAITING FOR HOST SAVE";
+            if (!_hasTrackedSave)
+                return "WAITING FOR HOST SAVE";
+            if (_compatibilitySeverity >= SessionIssueSeverity.Error)
+                return "SAVE MISMATCH";
+            return _localGuestReady ? "READY" : "NOT READY";
         }
 
         public static string GetMenuPresenceSummary()
@@ -246,9 +451,32 @@ namespace CupheadOnline.Sync
                 sb.Append(_trackedSaveSlot + 1);
                 sb.Append(" | ");
                 sb.Append(_trackedMapScene);
+                sb.Append(" | REV ");
+                sb.Append(_saveRevision);
                 if (_trackedSaveEmpty)
                     sb.Append(" | EMPTY");
                 sb.AppendLine();
+            }
+
+            sb.Append("Ready: Host ");
+            sb.Append(MultiplayerSession.IsHost ? "YES" : (_hasTrackedSave ? "YES" : "NO"));
+            sb.Append(" | Guest ");
+            sb.Append(MultiplayerSession.IsHost ? (_remoteGuestReady ? "YES" : "NO") : (_localGuestReady ? "YES" : "NO"));
+            sb.AppendLine();
+
+            sb.Append("Players: ");
+            sb.Append(MultiplayerSession.ActivePlayerCount);
+            sb.Append(" | Boss HP: ");
+            sb.AppendLine(BossHealthScaler.GetStatusSummary().Replace("Boss HP scaling: ", string.Empty));
+
+            string localLead = GetLocalLeadCharacterName();
+            string remoteLead = GetRemoteLeadCharacterName();
+            if (!string.IsNullOrEmpty(localLead) || !string.IsNullOrEmpty(remoteLead))
+            {
+                sb.Append("Lead Char: Local ");
+                sb.Append(string.IsNullOrEmpty(localLead) ? "Unknown" : localLead);
+                sb.Append(" | Remote ");
+                sb.AppendLine(string.IsNullOrEmpty(remoteLead) ? "Unknown" : remoteLead);
             }
 
             if (!string.IsNullOrEmpty(_compatibilitySummary))
@@ -276,12 +504,28 @@ namespace CupheadOnline.Sync
                 sb.Append("Save Slot: ");
                 sb.Append(_trackedSaveSlot + 1);
                 sb.Append(" | Map: ");
-                sb.AppendLine(_trackedMapScene.ToString());
+                sb.Append(_trackedMapScene);
+                sb.Append(" | Rev: ");
+                sb.AppendLine(_saveRevision.ToString());
             }
             else
             {
                 sb.AppendLine("Save Slot: waiting for host");
             }
+
+            sb.Append("Ready: Host ");
+            sb.Append(MultiplayerSession.IsHost ? "YES" : (_hasTrackedSave ? "YES" : "NO"));
+            sb.Append(" | Guest ");
+            sb.AppendLine(MultiplayerSession.IsHost ? (_remoteGuestReady ? "YES" : "NO") : (_localGuestReady ? "YES" : "NO"));
+
+            sb.Append("Players: ");
+            sb.Append(MultiplayerSession.ActivePlayerCount);
+            sb.Append(" | Characters: ");
+            sb.Append(MultiplayerSession.GetLocalCharacterName());
+            sb.Append(" / ");
+            sb.AppendLine(MultiplayerSession.GetRemoteCharacterName());
+
+            sb.AppendLine(BossHealthScaler.GetStatusSummary());
 
             sb.Append("Save Check: ");
             sb.AppendLine(string.IsNullOrEmpty(_compatibilitySummary) ? "No save data yet." : _compatibilitySummary);
@@ -305,10 +549,19 @@ namespace CupheadOnline.Sync
             var sb = new StringBuilder();
             sb.AppendLine("Stage: " + GetStageSummary());
             sb.AppendLine("Tracked Save: " + (_hasTrackedSave ? (_trackedSaveSlot + 1).ToString() : "(none)"));
+            sb.AppendLine("Save Revision: " + _saveRevision);
+            sb.AppendLine("Local Ready: " + IsLocalReady);
+            sb.AppendLine("Remote Ready: " + IsRemoteReady);
+            sb.AppendLine("Players: " + MultiplayerSession.ActivePlayerCount);
+            sb.AppendLine("Local Character: " + MultiplayerSession.GetLocalCharacterName());
+            sb.AppendLine("Remote Character: " + MultiplayerSession.GetRemoteCharacterName());
+            sb.AppendLine(BossHealthScaler.GetStatusSummary());
             sb.AppendLine("Compatibility: " + _compatibilitySummary);
             sb.AppendLine("Compatibility Severity: " + _compatibilitySeverity);
             sb.AppendLine("Desync: " + (string.IsNullOrEmpty(_desyncSummary) ? "(none)" : _desyncSummary));
             sb.AppendLine("Desync Severity: " + _desyncSeverity);
+            sb.AppendLine("Recovery Requests: " + _recoveryRequestCount);
+            sb.AppendLine("Recovery Bundles: " + _recoveryBundleCount);
             sb.AppendLine("Stats: deaths=" + _localDeaths + ", retries=" + _localRetries + ", parries=" + _localParries);
 
             if (_lastHostSnapshot.HasValue)
@@ -317,6 +570,7 @@ namespace CupheadOnline.Sync
                 sb.AppendLine("Host Scene: " + snap.SceneName);
                 sb.AppendLine("Host Level: " + snap.CurrentLevel);
                 sb.AppendLine("Host Tick: " + snap.HostTick);
+                sb.AppendLine("Host Save Revision: " + snap.SaveRevision);
             }
 
             return sb.ToString().TrimEnd();
@@ -335,40 +589,6 @@ namespace CupheadOnline.Sync
                 default:
                     return new Color(0.78f, 0.90f, 0.70f, 1f);
             }
-        }
-
-        public static void BroadcastSelectedSaveProfile()
-        {
-            if (!_hasTrackedSave || Plugin.Net == null || !Plugin.Net.IsConnected)
-                return;
-
-            BroadcastSaveProfile(_trackedSaveSlot, _trackedMapScene, _trackedSaveEmpty);
-        }
-
-        public static void BroadcastGuestSaveProfile()
-        {
-            if (!_hasTrackedSave || Plugin.Net == null || !Plugin.Net.IsConnected || MultiplayerSession.IsHost)
-                return;
-
-            BroadcastSaveProfile(_trackedSaveSlot, _trackedMapScene, _trackedSaveEmpty);
-        }
-
-        public static void BroadcastSessionSnapshot(bool reliable)
-        {
-            if (Plugin.Net == null || !Plugin.Net.IsConnected || !MultiplayerSession.IsHost)
-                return;
-
-            var pkt = new SessionSnapshotPacket
-            {
-                SaveSlotIndex = _hasTrackedSave ? _trackedSaveSlot : byte.MaxValue,
-                Flags = BuildSnapshotFlags(),
-                CurrentLevel = Level.Current != null ? (int)Level.Current.CurrentLevel : -1,
-                CurrentMapScene = PlayerData.Data != null ? (int)PlayerData.Data.CurrentMap : -1,
-                HostTick = MultiplayerSession.Tick,
-                SceneName = GetActiveSceneName(),
-            };
-
-            Plugin.Net.SendSessionSnapshot(ref pkt, reliable);
         }
 
         private static void BroadcastSaveProfile(byte slotIndex, Scenes mapScene, bool isEmpty)
@@ -445,6 +665,27 @@ namespace CupheadOnline.Sync
                 Super = super,
                 Charm = charm,
             };
+        }
+
+        private static string GetLocalLeadCharacterName()
+        {
+            return DescribeProfileCharacter(_localSaveProfile);
+        }
+
+        private static string GetRemoteLeadCharacterName()
+        {
+            return DescribeProfileCharacter(_remoteSaveProfile);
+        }
+
+        private static string DescribeProfileCharacter(SaveProfilePacket? profile)
+        {
+            if (!profile.HasValue)
+                return string.Empty;
+
+            var value = profile.Value;
+            if (value.DlcEnabled && (Charm)value.Charm == Charm.charm_chalice)
+                return "Ms. Chalice";
+            return value.Player1IsMugman ? "Mugman" : "Cuphead";
         }
 
         private static void EvaluateCompatibility()
@@ -533,11 +774,14 @@ namespace CupheadOnline.Sync
                     _compatibilitySummary += " +" + (issues.Count - 1) + " more";
                 _compatibilitySeverity = severity;
             }
+
+            if (!MultiplayerSession.IsHost && _compatibilitySeverity >= SessionIssueSeverity.Error && _localGuestReady)
+                UpdateLocalGuestReady(false, true);
         }
 
         private static void EvaluateDesync()
         {
-            if (!Plugin.Net.IsConnected || MultiplayerSession.IsHost)
+            if (Plugin.Net == null || !Plugin.Net.IsConnected || MultiplayerSession.IsHost)
             {
                 _desyncSummary = string.Empty;
                 _desyncSeverity = SessionIssueSeverity.None;
@@ -566,7 +810,7 @@ namespace CupheadOnline.Sync
 
             if (_sceneMismatchStreak >= 2)
             {
-                _desyncSummary = "Scene mismatch - host is in " + snapshot.SceneName + ".";
+                _desyncSummary = "Scene mismatch - ask the host for a resync.";
                 _desyncSeverity = SessionIssueSeverity.Error;
                 return;
             }
@@ -576,20 +820,47 @@ namespace CupheadOnline.Sync
             uint tickDelta = localTick > hostTick ? localTick - hostTick : hostTick - localTick;
             if (snapshot.IsInLevel && tickDelta > 240)
             {
-                _desyncSummary = "Simulation drift detected (" + tickDelta + " ticks).";
+                _desyncSummary = "Simulation drift detected (" + tickDelta + " ticks). Use REQUEST RESYNC.";
                 _desyncSeverity = SessionIssueSeverity.Warning;
                 return;
             }
 
             if (_lastHostSnapshotAt > 0f && Time.unscaledTime - _lastHostSnapshotAt > 4f)
             {
-                _desyncSummary = "Host snapshots stalled - retry if gameplay diverges.";
+                _desyncSummary = "Host snapshots stalled - request a resync if gameplay diverges.";
                 _desyncSeverity = SessionIssueSeverity.Warning;
                 return;
             }
 
             _desyncSummary = string.Empty;
             _desyncSeverity = SessionIssueSeverity.None;
+        }
+
+        private static void UpdateLocalGuestReady(bool ready, bool notifyHost)
+        {
+            _localGuestReady = ready;
+
+            if (!notifyHost || Plugin.Net == null || !Plugin.Net.IsConnected || MultiplayerSession.IsHost)
+                return;
+
+            var pkt = new SessionSignalPacket
+            {
+                Signal = (byte)(ready ? SessionSignalKind.GuestReady : SessionSignalKind.GuestUnready),
+                SaveRevision = _saveRevision,
+            };
+            Plugin.Net.SendSessionSignal(ref pkt);
+        }
+
+        private static ushort NextSaveRevision()
+        {
+            unchecked
+            {
+                _saveRevision++;
+                if (_saveRevision == 0)
+                    _saveRevision = 1;
+            }
+
+            return _saveRevision;
         }
 
         private static byte BuildSnapshotFlags()
@@ -629,9 +900,16 @@ namespace CupheadOnline.Sync
             _trackedSaveEmpty = false;
             _hasTrackedSave = false;
             _hasCompletedHandshake = false;
+            _saveRevision = 0;
+            _localGuestReady = false;
+            _remoteGuestReady = false;
             _nextHostSnapshotAt = 0f;
             _lastHostSnapshotAt = -1f;
+            _lastRecoveryRequestedAt = -1f;
+            _lastRecoveryBundleAt = -1f;
             _sceneMismatchStreak = 0;
+            _recoveryRequestCount = 0;
+            _recoveryBundleCount = 0;
             _compatibilitySummary = "Compatibility: waiting for host save.";
             _compatibilitySeverity = SessionIssueSeverity.Info;
             _desyncSummary = string.Empty;
@@ -651,9 +929,16 @@ namespace CupheadOnline.Sync
             _trackedSaveEmpty = false;
             _hasTrackedSave = false;
             _hasCompletedHandshake = false;
+            _saveRevision = 0;
+            _localGuestReady = false;
+            _remoteGuestReady = false;
             _nextHostSnapshotAt = 0f;
             _lastHostSnapshotAt = -1f;
+            _lastRecoveryRequestedAt = -1f;
+            _lastRecoveryBundleAt = -1f;
             _sceneMismatchStreak = 0;
+            _recoveryRequestCount = 0;
+            _recoveryBundleCount = 0;
             _compatibilitySummary = "Compatibility: waiting for host save.";
             _compatibilitySeverity = SessionIssueSeverity.Info;
             _desyncSummary = string.Empty;

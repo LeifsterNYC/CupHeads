@@ -34,6 +34,20 @@ namespace CupheadOnline
 
         public static PlayerId LocalId  => IsHost ? PlayerId.PlayerOne : PlayerId.PlayerTwo;
         public static PlayerId RemoteId => IsHost ? PlayerId.PlayerTwo : PlayerId.PlayerOne;
+        public static int ActivePlayerCount
+        {
+            get
+            {
+                int count = 0;
+                if (PlayerManager.GetPlayer(PlayerId.PlayerOne) != null) count++;
+                if (PlayerManager.GetPlayer(PlayerId.PlayerTwo) != null) count++;
+
+                if (count > 0)
+                    return count;
+
+                return IsActive || PlayerManager.Multiplayer ? 2 : 1;
+            }
+        }
 
         // ──────────────────────────────────────────────────────────────────────
         //  Events
@@ -97,6 +111,53 @@ namespace CupheadOnline
         {
             var p = PlayerManager.GetPlayer(RemoteId);
             return p as LevelPlayerController;
+        }
+
+        public static string GetPrimaryCharacterName()
+        {
+            return GetCharacterName(PlayerId.PlayerOne);
+        }
+
+        public static string GetSecondaryCharacterName()
+        {
+            return GetCharacterName(PlayerId.PlayerTwo);
+        }
+
+        public static string GetLocalCharacterName()
+        {
+            return GetCharacterName(IsActive ? LocalId : PlayerId.PlayerOne);
+        }
+
+        public static string GetRemoteCharacterName()
+        {
+            return GetCharacterName(IsActive ? RemoteId : PlayerId.PlayerTwo);
+        }
+
+        public static string GetCharacterName(PlayerId id)
+        {
+            try
+            {
+                var player = PlayerManager.GetPlayer(id);
+                if (player != null && player.stats != null && player.stats.isChalice)
+                    return "Ms. Chalice";
+
+                if (PlayerData.Data != null && PlayerData.Data.Loadouts != null)
+                {
+                    var loadout = PlayerData.Data.Loadouts.GetPlayerLoadout(id);
+                    if (loadout.charm == Charm.charm_chalice)
+                        return "Ms. Chalice";
+                }
+            }
+            catch
+            {
+            }
+
+            bool playerOneIsMugman = PlayerManager.player1IsMugman;
+            if (id == PlayerId.PlayerOne)
+                return playerOneIsMugman ? "Mugman" : "Cuphead";
+            if (id == PlayerId.PlayerTwo)
+                return playerOneIsMugman ? "Cuphead" : "Mugman";
+            return "Unknown";
         }
     }
 }

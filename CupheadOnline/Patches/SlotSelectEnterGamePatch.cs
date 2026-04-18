@@ -1,6 +1,7 @@
 using System.Reflection;
 using HarmonyLib;
 using CupheadOnline.Net;
+using CupheadOnline.UI;
 
 namespace CupheadOnline.Patches
 {
@@ -13,20 +14,20 @@ namespace CupheadOnline.Patches
         static readonly FieldInfo SlotsField =
             typeof(SlotSelectScreen).GetField("slots", BF);
 
-        static void Prefix(SlotSelectScreen __instance)
+        static bool Prefix(SlotSelectScreen __instance)
         {
-            if (!MultiplayerSession.IsActive || !MultiplayerSession.IsHost) return;
-            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
-            if (SlotSelectionField == null || SlotsField == null) return;
+            if (!MultiplayerSession.IsActive || !MultiplayerSession.IsHost) return true;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return true;
+            if (SlotSelectionField == null || SlotsField == null) return true;
 
             var slots = SlotsField.GetValue(__instance) as SlotSelectScreenSlot[];
-            if (slots == null || slots.Length == 0) return;
+            if (slots == null || slots.Length == 0) return true;
 
             int slotIndex = (int)SlotSelectionField.GetValue(__instance);
-            if (slotIndex < 0 || slotIndex >= slots.Length) return;
+            if (slotIndex < 0 || slotIndex >= slots.Length) return true;
 
             var slot = slots[slotIndex];
-            if (slot == null) return;
+            if (slot == null) return true;
 
             bool isEmpty = slot.IsEmpty;
             Scenes currentMap = Scenes.scene_map_world_1;
@@ -44,12 +45,22 @@ namespace CupheadOnline.Patches
             {
                 SlotIndex       = (byte)slotIndex,
                 Flags           = (byte)((isEmpty ? 1 : 0) | (slot.isPlayer1Mugman ? 2 : 0)),
+                SaveRevision    = 0,
                 CurrentMapScene = (int)currentMap,
             };
             Sync.SessionSync.RecordSelectedSave(ref pkt);
             Plugin.Net.SendSaveSlotSync(ref pkt);
             Sync.SessionSync.BroadcastSelectedSaveProfile();
             Sync.SessionSync.BroadcastSessionSnapshot(true);
+
+            string gateReason;
+            if (!Sync.SessionSync.CanHostStartRun(out gateReason))
+            {
+                ConnectionHUD.Show(gateReason);
+                Plugin.Log.LogInfo("[SaveSync] Host start blocked: " + gateReason);
+                return false;
+            }
+
             Plugin.Log.LogInfo(
                 "[SaveSync] Broadcast host slot "
                 + slotIndex
@@ -57,9 +68,12 @@ namespace CupheadOnline.Patches
                 + currentMap
                 + ", empty="
                 + isEmpty
+                + ", rev="
+                + pkt.SaveRevision
                 + ", mugman="
                 + slot.isPlayer1Mugman
                 + ").");
+            return true;
         }
     }
 }

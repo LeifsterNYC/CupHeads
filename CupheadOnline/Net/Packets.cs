@@ -28,6 +28,15 @@ namespace CupheadOnline.Net
         SaveSlotSync = 15,
         SaveProfile = 16,
         SessionSnapshot = 17,
+        SessionSignal = 18,
+    }
+
+    public enum SessionSignalKind : byte
+    {
+        None = 0,
+        GuestReady = 1,
+        GuestUnready = 2,
+        RequestRecovery = 3,
     }
 
     public struct PlayerStatePacket : IPacket
@@ -236,20 +245,29 @@ namespace CupheadOnline.Net
 
     public struct SessionStartPacket : IPacket
     {
+        public byte Flags;
         public int CurrentLevel;
+        public ushort SaveRevision;
         public uint CurrentTick;
         public uint RngSeed;
 
+        public bool IsInLevel => (Flags & 1) != 0;
+        public bool HasTrackedSave => (Flags & 2) != 0;
+
         public void Write(BinaryWriter w)
         {
+            w.Write(Flags);
             w.Write(CurrentLevel);
+            w.Write(SaveRevision);
             w.Write(CurrentTick);
             w.Write(RngSeed);
         }
 
         public void Read(BinaryReader r)
         {
+            Flags = r.ReadByte();
             CurrentLevel = r.ReadInt32();
+            SaveRevision = r.ReadUInt16();
             CurrentTick = r.ReadUInt32();
             RngSeed = r.ReadUInt32();
         }
@@ -286,6 +304,7 @@ namespace CupheadOnline.Net
     {
         public byte SlotIndex;
         public byte Flags;
+        public ushort SaveRevision;
         public int CurrentMapScene;
 
         public bool IsEmpty => (Flags & 1) != 0;
@@ -295,6 +314,7 @@ namespace CupheadOnline.Net
         {
             w.Write(SlotIndex);
             w.Write(Flags);
+            w.Write(SaveRevision);
             w.Write(CurrentMapScene);
         }
 
@@ -302,6 +322,7 @@ namespace CupheadOnline.Net
         {
             SlotIndex = r.ReadByte();
             Flags = r.ReadByte();
+            SaveRevision = r.ReadUInt16();
             CurrentMapScene = r.ReadInt32();
         }
     }
@@ -356,6 +377,7 @@ namespace CupheadOnline.Net
     {
         public byte SaveSlotIndex;
         public byte Flags;
+        public ushort SaveRevision;
         public int CurrentLevel;
         public int CurrentMapScene;
         public uint HostTick;
@@ -369,6 +391,7 @@ namespace CupheadOnline.Net
         {
             w.Write(SaveSlotIndex);
             w.Write(Flags);
+            w.Write(SaveRevision);
             w.Write(CurrentLevel);
             w.Write(CurrentMapScene);
             w.Write(HostTick);
@@ -379,10 +402,31 @@ namespace CupheadOnline.Net
         {
             SaveSlotIndex = r.ReadByte();
             Flags = r.ReadByte();
+            SaveRevision = r.ReadUInt16();
             CurrentLevel = r.ReadInt32();
             CurrentMapScene = r.ReadInt32();
             HostTick = r.ReadUInt32();
             SceneName = r.ReadString();
+        }
+    }
+
+    public struct SessionSignalPacket : IPacket
+    {
+        public byte Signal;
+        public ushort SaveRevision;
+
+        public SessionSignalKind Kind => (SessionSignalKind)Signal;
+
+        public void Write(BinaryWriter w)
+        {
+            w.Write(Signal);
+            w.Write(SaveRevision);
+        }
+
+        public void Read(BinaryReader r)
+        {
+            Signal = r.ReadByte();
+            SaveRevision = r.ReadUInt16();
         }
     }
 }

@@ -28,12 +28,17 @@ namespace CupheadOnline
         static ConfigEntry<bool> _cfgAutoOpenSteamFriends;
         static ConfigEntry<bool> _cfgShowCreditsMenu;
         static ConfigEntry<bool> _cfgShowPauseSessionPanel;
+        static ConfigEntry<bool> _cfgBossHpScalingEnabled;
+        static ConfigEntry<float> _cfgBossHpPerExtraPlayer;
 
         public static bool ShowConnectionHud => _cfgShowConnectionHud == null || _cfgShowConnectionHud.Value;
         public static bool VerboseLoggingEnabled => _cfgVerboseLogging != null && _cfgVerboseLogging.Value;
         public static bool AutoOpenSteamFriends => _cfgAutoOpenSteamFriends != null && _cfgAutoOpenSteamFriends.Value;
         public static bool ShowCreditsMenu => _cfgShowCreditsMenu == null || _cfgShowCreditsMenu.Value;
         public static bool ShowPauseSessionPanel => _cfgShowPauseSessionPanel == null || _cfgShowPauseSessionPanel.Value;
+        public static bool BossHpScalingEnabled => _cfgBossHpScalingEnabled != null && _cfgBossHpScalingEnabled.Value;
+        public static float BossHpPerExtraPlayer =>
+            _cfgBossHpPerExtraPlayer == null ? 0.35f : Mathf.Max(0f, _cfgBossHpPerExtraPlayer.Value);
 
         // ──────────────────────────────────────────────────────────────────────
         //  Unity lifecycle
@@ -54,6 +59,10 @@ namespace CupheadOnline
                 "Show the custom Credits entry on the title screen.");
             _cfgShowPauseSessionPanel = Config.Bind("UI", "ShowPauseSessionPanel", true,
                 "Show the in-game session panel while paused, or when F8 is toggled.");
+            _cfgBossHpScalingEnabled = Config.Bind("Balance", "EnableBossHpScalingByPlayerCount", false,
+                "Scale battle-level boss HP by connected player count. Disabled by default.");
+            _cfgBossHpPerExtraPlayer = Config.Bind("Balance", "BossHpPerExtraPlayer", 0.35f,
+                "Extra boss HP added per extra active player. Example: 0.35 means 2 players = 1.35x HP.");
 
             // Networking manager — Steam P2P transport (lobby + invite flow)
             Net = new SteamNetManager();
@@ -140,6 +149,7 @@ namespace CupheadOnline
             MainThreadQueue.Drain();
             Net?.Poll();
             EnemySyncManager.HostTick();
+            BossHealthScaler.Update();
             SessionSync.Update();
             SessionPausePanel.Ensure();
         }
@@ -154,6 +164,7 @@ namespace CupheadOnline
         {
             Net?.Dispose();
             MultiplayerSession.End();
+            BossHealthScaler.Reset();
         }
 
         public static void LogVerbose(string msg)
@@ -171,7 +182,10 @@ namespace CupheadOnline
                           + "Verbose Logging: " + VerboseLoggingEnabled + nl
                           + "Auto Open Steam Friends: " + AutoOpenSteamFriends + nl
                           + "Show Credits Menu: " + ShowCreditsMenu + nl
-                          + "Show Pause Session Panel: " + ShowPauseSessionPanel + nl;
+                          + "Show Pause Session Panel: " + ShowPauseSessionPanel + nl
+                          + "Boss HP Scaling Enabled: " + BossHpScalingEnabled + nl
+                          + "Boss HP Per Extra Player: " + BossHpPerExtraPlayer.ToString("0.00") + nl
+                          + BossHealthScaler.GetStatusSummary() + nl;
 
             if (Net != null)
                 report += nl + Net.BuildDiagnosticsReport();
@@ -186,6 +200,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupheadOnline";
-        public const string VERSION = "1.1.1";
+        public const string VERSION = "1.2.0";
     }
 }

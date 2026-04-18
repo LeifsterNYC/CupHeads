@@ -19,6 +19,8 @@ Steam P2P multiplayer for Cuphead, plus a desktop installer that handles the mod
 - Save compatibility checks with warnings for mismatched progress or setup
 - Live connection HUD with role, status, session info, and sync warnings
 - In-game session panel with `F8` toggle for quick diagnostics and session state
+- Optional boss HP scaling per extra active player, configurable in BepInEx and disabled by default
+- Recovery and resync tools for active sessions, including exported bug-report bundles
 
 ### Menu and UX
 
@@ -27,6 +29,17 @@ Steam P2P multiplayer for Cuphead, plus a desktop installer that handles the mod
 - Clear Steam readiness and connection status messaging
 - Clipboard helpers for lobby IDs and diagnostics
 - Better retry and reconnect guidance when Steam sessions fail
+
+### Characters and DLC
+
+- Cuphead and Mugman are both supported in the main co-op flow
+- Ms. Chalice is supported when the Delicious Last Course DLC is installed and her charm/loadout is available
+- Save compatibility checks look at DLC world access and DLC progression before the host starts a run
+
+## Current Gameplay Limit
+
+- Active gameplay is still capped by Cuphead's native two-player runtime, so live runs remain `PlayerOne` + `PlayerTwo`
+- The current mod architecture supports richer lobby/session flow, but it does not turn Cuphead into a true unlimited-player game
 
 ### Installer
 

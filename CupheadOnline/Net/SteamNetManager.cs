@@ -46,6 +46,7 @@ namespace CupheadOnline.Net
         public bool CanCopyLobbyId => _steamReady && _lobbyId != CSteamID.Nil;
         public bool CanRetryLastAction => _lastRetryIntent != RetryIntent.None;
         public bool CanOpenSaveSlot => _steamReady && _state == NetState.Connected && _isHost;
+        public bool CanRequestRecovery => _steamReady && _state == NetState.Connected;
 
         /// <summary>True while a critical async operation is in flight (host/join pending).</summary>
         public bool IsInputLocked => _state == NetState.CreatingLobby
@@ -155,8 +156,10 @@ namespace CupheadOnline.Net
             switch (_lastRetryIntent)
             {
                 case RetryIntent.Host:
-                    return "RETRY HOST";
+                    return _lastDisconnectWasConnected ? "REOPEN LOBBY" : "RETRY HOST";
                 case RetryIntent.JoinLobby:
+                    if (_lastDisconnectWasConnected)
+                        return _lastRetryLobbyId == CSteamID.Nil ? "RECONNECT" : "REJOIN RUN";
                     return _lastRetryLobbyId == CSteamID.Nil ? "RETRY JOIN" : "REJOIN LOBBY";
                 default:
                     return "RETRY LAST";
@@ -288,6 +291,24 @@ namespace CupheadOnline.Net
             return true;
         }
 
+        public bool TryRequestRecovery(out string status)
+        {
+            status = string.Empty;
+            if (!EnsureSteamReady())
+            {
+                status = _steamUnavailableStatus;
+                return false;
+            }
+            if (_state != NetState.Connected)
+            {
+                status = "Connect first before requesting a resync.";
+                return false;
+            }
+
+            status = SessionSync.RequestRecovery();
+            return true;
+        }
+
         public string BuildDiagnosticsReport()
         {
             var nl = Environment.NewLine;
@@ -300,6 +321,7 @@ namespace CupheadOnline.Net
             sb.AppendLine("Lobby ID: " + (_lobbyId == CSteamID.Nil ? "(none)" : _lobbyId.m_SteamID.ToString()));
             sb.AppendLine("Peer: " + (_peerId == CSteamID.Nil ? "(none)" : FriendName(_peerId) + " [" + _peerId.m_SteamID + "]"));
             sb.AppendLine("Retry Action: " + GetRetryActionLabel());
+            sb.AppendLine("Reconnect Available: " + _lastDisconnectWasConnected);
             sb.AppendLine("Last Status: " + (_lastStatusMessage ?? string.Empty));
             sb.AppendLine("Last Failure: " + (_lastFailureReason ?? string.Empty));
 
@@ -351,6 +373,7 @@ namespace CupheadOnline.Net
         RetryIntent _lastRetryIntent = RetryIntent.None;
         CSteamID    _lastRetryLobbyId = CSteamID.Nil;
         string      _lastRetryPeerName = string.Empty;
+        bool        _lastDisconnectWasConnected;
 
         // ── Callbacks (hold references — prevent GC) ──────────────────────────
         Callback<P2PSessionRequest_t>      _cbP2PReq;
@@ -440,6 +463,7 @@ namespace CupheadOnline.Net
             _lastRetryIntent = RetryIntent.Host;
             _lastRetryLobbyId = CSteamID.Nil;
             _lastRetryPeerName = string.Empty;
+            _lastDisconnectWasConnected = false;
             Shutdown();
             _isHost = true;
             SteamNetworking.AllowP2PPacketRelay(true);
@@ -503,6 +527,7 @@ namespace CupheadOnline.Net
 
             _lastRetryIntent = RetryIntent.JoinLobby;
             _lastRetryLobbyId = lobbyId;
+            _lastDisconnectWasConnected = false;
             Shutdown();
             _isHost = false;
             SteamNetworking.AllowP2PPacketRelay(true);
@@ -586,6 +611,7 @@ namespace CupheadOnline.Net
             }
 
             _lastReceive = DateTime.UtcNow;
+            _lastDisconnectWasConnected = false;
             string name  = FriendName(_peerId);
             SetState(
                 NetState.Connected,
@@ -597,17 +623,7 @@ namespace CupheadOnline.Net
             SessionSync.OnConnected(_isHost);
 
             if (_isHost)
-            {
-                var pkt = new SessionStartPacket
-                {
-                    CurrentLevel = (int)SceneLoader.CurrentLevel,
-                    CurrentTick  = MultiplayerSession.Tick,
-                    RngSeed      = RngSync.CurrentSeed,
-                };
-                Send(PacketType.SessionStart, ref pkt, reliable: true);
-                SessionSync.BroadcastSelectedSaveProfile();
-                SessionSync.BroadcastSessionSnapshot(true);
-            }
+                SessionSync.BroadcastRecoveryBundle("Peer connected or reconnected.");
         }
 
         // ── Disconnect / failure ──────────────────────────────────────────────
@@ -655,6 +671,7 @@ namespace CupheadOnline.Net
             bool wasConnected = _state == NetState.Connected;
             string friendlyReason = string.IsNullOrEmpty(reason) ? "Connection closed." : reason;
             _lastFailureReason = friendlyReason;
+            _lastDisconnectWasConnected = wasConnected;
             if (_steamReady && _peerId != CSteamID.Nil)
                 SteamNetworking.CloseP2PSessionWithUser(_peerId);
             _peerId          = CSteamID.Nil;
@@ -829,7 +846,7 @@ namespace CupheadOnline.Net
 
         public void SendPlayerState (ref PlayerStatePacket  p) => Send(PacketType.PlayerState,  ref p, false);
         public void SendInputFrame  (ref InputFramePacket   p) => Send(PacketType.InputFrame,   ref p, false);
-        public void SendEnemyState  (ref EnemyStatePacket   p) => Send(PacketType.EnemyState,   ref p, false);
+        public void SendEnemyState  (ref EnemyStatePacket   p, bool reliable = false) => Send(PacketType.EnemyState,   ref p, reliable);
         public void SendWeaponEvent (ref WeaponEventPacket  p) => Send(PacketType.WeaponEvent,  ref p, true);
         public void SendDamageEvent (ref DamageEventPacket  p) => Send(PacketType.DamageEvent,  ref p, true);
         public void SendSceneChange (ref SceneChangePacket  p) => Send(PacketType.SceneChange,  ref p, true);
@@ -838,6 +855,8 @@ namespace CupheadOnline.Net
         public void SendSaveProfile(ref SaveProfilePacket p) => Send(PacketType.SaveProfile, ref p, true);
         public void SendLobbySync   (ref LobbySyncPacket    p) => Send(PacketType.LobbySync,    ref p, true);
         public void SendSessionSnapshot(ref SessionSnapshotPacket p, bool reliable = true) => Send(PacketType.SessionSnapshot, ref p, reliable);
+        public void SendSessionSignal(ref SessionSignalPacket p) => Send(PacketType.SessionSignal, ref p, true);
+        public void SendSessionStart(ref SessionStartPacket p) => Send(PacketType.SessionStart, ref p, true);
 
         void Send<T>(PacketType type, ref T pkt, bool reliable) where T : struct, IPacket
         {

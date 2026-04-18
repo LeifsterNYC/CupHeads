@@ -405,7 +405,9 @@ namespace CupheadOnline.Net
             {
                 var pkt = new SessionStartPacket
                 {
+                    Flags        = 1,
                     CurrentLevel = (int)SceneLoader.CurrentLevel,
+                    SaveRevision = 0,
                     CurrentTick  = MultiplayerSession.Tick,
                     RngSeed      = RngSync.CurrentSeed,
                 };

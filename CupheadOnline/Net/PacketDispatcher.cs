@@ -123,6 +123,14 @@ namespace CupheadOnline.Net
                     break;
                 }
 
+                case PacketType.SessionSignal:
+                {
+                    var pkt = new SessionSignalPacket();
+                    pkt.Read(r);
+                    SessionSync.ApplySessionSignal(pkt);
+                    break;
+                }
+
                 case PacketType.SessionStart:
                 {
                     if (MultiplayerSession.IsHost) break;
@@ -131,7 +139,7 @@ namespace CupheadOnline.Net
                     RngSync.SetSeed(pkt.RngSeed);
                     if (!MultiplayerSession.IsActive || MultiplayerSession.IsHost)
                         MultiplayerSession.StartAsClient();
-                    if (Level.Current != null)
+                    if (pkt.IsInLevel && pkt.CurrentLevel >= 0)
                         SceneLoader.LoadLevel((Levels)pkt.CurrentLevel, SceneLoader.Transition.Iris);
                     break;
                 }
