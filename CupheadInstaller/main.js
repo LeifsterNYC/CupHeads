@@ -342,13 +342,51 @@ function download(url, dest, onProgress) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     let redirectCount = 0;
+    let activeReq = null;
+    let settled = false;
+    let idleTimer = null;
+
+    function cleanupTemp() {
+      try { file.destroy(); } catch { /* best-effort */ }
+      try {
+        if (fs.existsSync(dest))
+          fs.unlinkSync(dest);
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    function fail(err) {
+      if (settled) return;
+      settled = true;
+      if (idleTimer)
+        clearTimeout(idleTimer);
+      try { if (activeReq) activeReq.destroy(); } catch { /* best-effort */ }
+      cleanupTemp();
+      reject(err);
+    }
+
+    function armTimeout() {
+      if (idleTimer)
+        clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        fail(new Error('BepInEx download timed out. Please try again in a minute.'));
+      }, 30000);
+    }
 
     function doGet(requestUrl) {
+      armTimeout();
       const transport = requestUrl.startsWith('https') ? https : http;
-      const req = transport.get(requestUrl, (res) => {
+      const req = transport.get(requestUrl, {
+        headers: {
+          'User-Agent': 'CupHeads-Installer',
+          Accept: 'application/octet-stream,*/*',
+        },
+      }, (res) => {
+        armTimeout();
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           if (++redirectCount > 10) {
-            reject(new Error('Too many redirects'));
+            fail(new Error('Too many redirects while downloading BepInEx.'));
             return;
           }
           doGet(res.headers.location);
@@ -356,7 +394,7 @@ function download(url, dest, onProgress) {
         }
 
         if (res.statusCode !== 200) {
-          reject(new Error('Download failed (HTTP ' + res.statusCode + ')'));
+          fail(new Error('Download failed (HTTP ' + res.statusCode + ')'));
           return;
         }
 
@@ -364,27 +402,54 @@ function download(url, dest, onProgress) {
         let received = 0;
 
         res.on('data', (chunk) => {
+          armTimeout();
           received += chunk.length;
           if (total > 0 && onProgress)
             onProgress(Math.round((received / total) * 100));
         });
 
         res.pipe(file);
-        file.on('finish', () => file.close(resolve));
-        res.on('error', (err) => file.close(() => reject(err)));
+        res.on('error', fail);
       });
 
-      req.on('error', (err) => file.close(() => reject(err)));
+      activeReq = req;
+      req.setTimeout(30000, () => fail(new Error('BepInEx download timed out. Please try again in a minute.')));
+      req.on('error', fail);
     }
+
+    file.on('finish', () => {
+      if (settled) return;
+      settled = true;
+      if (idleTimer)
+        clearTimeout(idleTimer);
+      file.close(resolve);
+    });
+    file.on('error', fail);
 
     doGet(url);
   });
 }
 
+const BEPINEX_VERSION = '5.4.23.5';
 const BEPINEX = {
-  x64: 'https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.2/BepInEx_x64_5.4.23.2.zip',
-  x86: 'https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.2/BepInEx_x86_5.4.23.2.zip',
+  x64: `https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_win_x64_${BEPINEX_VERSION}.zip`,
+  x86: `https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_win_x86_${BEPINEX_VERSION}.zip`,
 };
+
+function getBundledBepInExArchive(arch) {
+  const assetRoot = getBundledAssetRoot();
+  const patterns = arch === 'x64'
+    ? [/^BepInEx_win_x64_.*\.zip$/i, /^BepInEx_x64_.*\.zip$/i]
+    : [/^BepInEx_win_x86_.*\.zip$/i, /^BepInEx_x86_.*\.zip$/i];
+
+  for (const pattern of patterns) {
+    const match = fs.readdirSync(assetRoot).find((name) => pattern.test(name));
+    if (match)
+      return path.join(assetRoot, match);
+  }
+
+  return null;
+}
 
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
@@ -417,8 +482,8 @@ async function getLatestBepInExUrl(arch) {
       throw new Error('Invalid release data');
 
     const assetPattern = arch === 'x64'
-      ? /BepInEx_x64_.*\.zip$/i
-      : /BepInEx_x86_.*\.zip$/i;
+      ? /BepInEx_(?:win_)?x64_.*\.zip$/i
+      : /BepInEx_(?:win_)?x86_.*\.zip$/i;
 
     const asset = release.assets.find((item) => assetPattern.test(item.name));
     if (asset && asset.browser_download_url)
@@ -449,43 +514,60 @@ ipcMain.on('install', async (event, { cupheadDir, skipBepInEx }) => {
 
     if (!skipBepInEx) {
       const arch = getCupheadArch(cupheadDir);
-      const zipUrl = await getLatestBepInExUrl(arch);
-      const zipPath = path.join(os.tmpdir(), path.basename(zipUrl));
+      const bundledArchive = getBundledBepInExArchive(arch);
+      let zipPath = bundledArchive;
 
-      send('step', {
-        step: 'bepinex',
-        status: 'downloading',
-        progress: 0,
-        arch,
-        message: 'Downloading BepInEx repair package...',
-      });
-
-      await download(zipUrl, zipPath, (pct) => {
+      if (bundledArchive) {
         send('step', {
           step: 'bepinex',
           status: 'downloading',
-          progress: pct,
+          progress: 100,
           arch,
-          message: `Downloading BepInEx repair package... ${pct}%`,
+          message: 'Using bundled BepInEx repair package from the installer...',
         });
-      });
+      } else {
+        const zipUrl = await getLatestBepInExUrl(arch);
+        zipPath = path.join(os.tmpdir(), path.basename(new URL(zipUrl).pathname));
+
+        send('step', {
+          step: 'bepinex',
+          status: 'downloading',
+          progress: 0,
+          arch,
+          message: 'Downloading BepInEx repair package from GitHub...',
+        });
+
+        await download(zipUrl, zipPath, (pct) => {
+          send('step', {
+            step: 'bepinex',
+            status: 'downloading',
+            progress: pct,
+            arch,
+            message: `Downloading BepInEx repair package from GitHub... ${pct}%`,
+          });
+        });
+      }
 
       send('step', {
         step: 'bepinex',
         status: 'extracting',
         progress: 100,
-        message: 'Extracting BepInEx into Cuphead...',
+        message: 'Extracting BepInEx into Cuphead... This can take a minute on some drives.',
       });
 
       const AdmZip = require('adm-zip');
       new AdmZip(zipPath).extractAllTo(cupheadDir, true);
-      try { fs.unlinkSync(zipPath); } catch { /* best-effort */ }
+      if (!bundledArchive) {
+        try { fs.unlinkSync(zipPath); } catch { /* best-effort */ }
+      }
 
       send('step', {
         step: 'bepinex',
         status: 'done',
         progress: 100,
-        message: 'BepInEx is ready.',
+        message: bundledArchive
+          ? 'BepInEx is ready from the bundled repair package.'
+          : 'BepInEx is ready.',
       });
     } else {
       send('step', {

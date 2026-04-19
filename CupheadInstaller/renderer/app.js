@@ -127,7 +127,7 @@ function updateInstallPlan(state) {
   if (state.hasBepInExCore && state.hasDoorstop)
     sentences.push('BepInEx is already healthy, so only the mod files will be refreshed.');
   else
-    sentences.push('BepInEx will be repaired automatically before the mod is copied.');
+    sentences.push('BepInEx will be repaired automatically from the installer bundle before the mod is copied.');
 
   sentences.push('CupHeads mod files are refreshed every time you press Install, even if the DLL is already there.');
 
@@ -148,7 +148,7 @@ function updateInstallSummary(state) {
   const parts = [];
   parts.push(skipBepInExRepair
     ? 'BepInEx will be kept as-is unless the verify pass finds damage.'
-    : 'BepInEx needs repair, so the installer will fetch a fresh bootstrap package.');
+    : 'BepInEx needs repair, so the installer will use its bundled repair package and only fall back to GitHub if that bundle is missing.');
   parts.push('Bundled CupHeads files will be overwritten with the latest installer copy.');
 
   if (state.hasLegacyFiles)

@@ -34,6 +34,19 @@ $ModProject         = Join-Path $Root "CupheadOnline\CupheadOnline.csproj"
 $InstallerDir       = Join-Path $Root "CupheadInstaller"
 $InstallerAssetsDir = Join-Path $InstallerDir "assets"
 $InstallerExe       = Join-Path $InstallerDir "dist\CupHeads.exe"
+$BepInExVersion     = "5.4.23.5"
+$BepInExPackages    = @(
+    @{
+        Arch = "x64"
+        FileName = "BepInEx_win_x64_$BepInExVersion.zip"
+        Url = "https://github.com/BepInEx/BepInEx/releases/download/v$BepInExVersion/BepInEx_win_x64_$BepInExVersion.zip"
+    },
+    @{
+        Arch = "x86"
+        FileName = "BepInEx_win_x86_$BepInExVersion.zip"
+        Url = "https://github.com/BepInEx/BepInEx/releases/download/v$BepInExVersion/BepInEx_win_x86_$BepInExVersion.zip"
+    }
+)
 
 function Write-Step([string]$msg) {
     Write-Host ""
@@ -49,6 +62,28 @@ function Fail([string]$msg) {
 function Invoke-Checked([scriptblock]$Action, [string]$ErrorMessage) {
     & $Action
     if ($LASTEXITCODE -ne 0) { Fail $ErrorMessage }
+}
+
+function Ensure-BepInExBundle([string]$AssetsDir) {
+    $keep = @($BepInExPackages | ForEach-Object { $_.FileName })
+
+    Get-ChildItem $AssetsDir -Filter "BepInEx*.zip" -File -ErrorAction SilentlyContinue |
+        Where-Object { $keep -notcontains $_.Name } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+
+    foreach ($pkg in $BepInExPackages) {
+        $destination = Join-Path $AssetsDir $pkg.FileName
+        if (Test-Path $destination) {
+            Write-Host "  Using cached $($pkg.FileName)" -ForegroundColor Green
+            continue
+        }
+
+        Write-Host "  Downloading $($pkg.FileName)" -ForegroundColor Cyan
+        Invoke-WebRequest `
+            -Uri $pkg.Url `
+            -Headers @{ "User-Agent" = "CupHeads-Build" } `
+            -OutFile $destination
+    }
 }
 
 Write-Host ""
@@ -118,6 +153,9 @@ Copy-Item $ModDll (Join-Path $DistDir "CupheadOnline.dll") -Force
 Write-Step "Staging DLL for Electron installer"
 New-Item -ItemType Directory -Force $InstallerAssetsDir | Out-Null
 Copy-Item $ModDll (Join-Path $InstallerAssetsDir "CupheadOnline.dll") -Force
+
+Write-Step "Bundling BepInEx repair packages"
+Ensure-BepInExBundle -AssetsDir $InstallerAssetsDir
 
 if ($InstallNodeModules -or -not (Test-Path (Join-Path $InstallerDir "node_modules"))) {
     Write-Step "Installing Node dependencies"

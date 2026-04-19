@@ -66,7 +66,7 @@ Steam P2P multiplayer for Cuphead, plus a desktop installer that handles the mod
 
 - Windows 10 or later
 - Cuphead installed through Steam
-- Internet connection for BepInEx download during install
+- Internet connection only if the bundled BepInEx repair package is missing and the installer has to fall back to GitHub
 
 ## Quick Start
 
@@ -83,7 +83,7 @@ If you test outside the Steam launcher, you may need a `steam_appid.txt` next to
 The Electron installer:
 
 - detects your Cuphead install
-- repairs or installs BepInEx 5 if it is missing or damaged
+- repairs or installs BepInEx 5 from a bundled repair package if it is missing or damaged
 - always refreshes `CupheadOnline.dll` in `Cuphead\\BepInEx\\plugins\\CupheadOnline\\`
 - removes stale `LiteNetLib.dll` leftovers from the older UDP transport
 - verifies the final install before finishing

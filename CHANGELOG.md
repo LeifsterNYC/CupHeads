@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.1 - 2026-04-19
+
+- Fixed the Electron installer's BepInEx repair flow so it resolves the current Windows asset names instead of falling back to an outdated 404 URL.
+- Bundled the BepInEx x64 and x86 repair archives directly into the installer so normal installs no longer depend on a live GitHub download.
+- Added stronger installer timeout and progress handling around the BepInEx fallback download path so stalled downloads fail clearly instead of looking frozen.
+- Updated the installer copy and README to reflect the new bundled BepInEx repair behavior.
+
 ## v1.2.0 - 2026-04-17
 
 - Added optional boss HP scaling by active player count for battle levels, with a configurable per-extra-player modifier in the BepInEx config and the feature disabled by default.
