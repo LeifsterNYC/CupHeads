@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.7 - 2026-04-19
+
+- Narrowed guest input remapping so only spawned PlayerInput components swap to the guest's local controls, avoiding global menu/input side effects.
+- Added host-authoritative scene-load gating so connected guests cannot accidentally launch their own local map or level transition while waiting for host sync.
+- Added stale allowance and disconnect guards around scene, movement, weapon, damage, death/revive, and loadout sync sends for cleaner teardown and recovery behavior.
+
 ## v1.2.6 - 2026-04-19
 
 - Fixed Steam multiplayer launches landing both players in separate solo overworld sessions by forcing Cuphead's native two-player flag before map and level player spawning.

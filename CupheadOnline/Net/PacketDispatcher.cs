@@ -1,4 +1,5 @@
 using System.IO;
+using CupheadOnline.Patches;
 using CupheadOnline.Sync;
 using CupheadOnline.UI;
 
@@ -71,7 +72,10 @@ namespace CupheadOnline.Net
                     pkt.Read(r);
                     RngSync.SetSeed(pkt.RngSeed);
                     if (!MultiplayerSession.IsHost)
+                    {
+                        SceneSyncState.AllowNextClientLevelLoad();
                         SceneLoader.LoadLevel((Levels)pkt.LevelEnum, SceneLoader.Transition.Iris);
+                    }
                     break;
                 }
 
@@ -82,6 +86,7 @@ namespace CupheadOnline.Net
                     RngSync.SetSeed(pkt.RngSeed);
                     if (!MultiplayerSession.IsHost)
                     {
+                        SceneSyncState.AllowNextClientSceneLoad();
                         SceneLoader.LoadScene(
                             (Scenes)pkt.SceneEnum,
                             (SceneLoader.Transition)pkt.TransitionStart,
@@ -159,7 +164,10 @@ namespace CupheadOnline.Net
                     if (!MultiplayerSession.IsActive || MultiplayerSession.IsHost)
                         MultiplayerSession.StartAsClient();
                     if (pkt.IsInLevel && pkt.CurrentLevel >= 0)
+                    {
+                        SceneSyncState.AllowNextClientLevelLoad();
                         SceneLoader.LoadLevel((Levels)pkt.CurrentLevel, SceneLoader.Transition.Iris);
+                    }
                     break;
                 }
 

@@ -52,6 +52,9 @@ namespace CupheadOnline.Sync
         /// </summary>
         public static void BroadcastLocalLoadout()
         {
+            if (!MultiplayerSession.IsActive || Plugin.Net == null || !Plugin.Net.IsConnected)
+                return;
+
             var player = MultiplayerSession.GetLocalController();
             if (player == null) return;
             var stats = player.stats;

@@ -20,18 +20,39 @@ namespace CupheadOnline.Patches
         }
     }
 
-    [HarmonyPatch(typeof(PlayerManager), "GetPlayerInput")]
-    public static class PlayerManagerGetPlayerInputPatch
+    [HarmonyPatch(typeof(PlayerInput), "Init")]
+    public static class PlayerInputInitPatch
     {
-        static void Prefix(ref PlayerId id)
+        static void Postfix(PlayerInput __instance, PlayerId playerId)
         {
             if (!MultiplayerSession.IsActive || !MultiplayerSession.IsClient)
                 return;
 
-            if (id == PlayerId.PlayerTwo)
-                id = PlayerId.PlayerOne;
-            else if (id == PlayerId.PlayerOne)
-                id = PlayerId.PlayerTwo;
+            if (__instance == null)
+                return;
+
+            PlayerId inputSource = playerId;
+            if (playerId == PlayerId.PlayerTwo)
+                inputSource = PlayerId.PlayerOne;
+            else if (playerId == PlayerId.PlayerOne)
+                inputSource = PlayerId.PlayerTwo;
+            else
+                return;
+
+            try
+            {
+                var getter = AccessTools.Method(typeof(PlayerManager), "GetPlayerInput", new[] { typeof(PlayerId) });
+                if (getter == null)
+                    return;
+
+                var actions = getter.Invoke(null, new object[] { inputSource });
+                Traverse.Create(__instance).Property("actions").SetValue(actions);
+            }
+            catch
+            {
+                // Rewired is not referenced by the mod directly; keep this
+                // reflection-only so global menu input is not swapped by accident.
+            }
         }
     }
 

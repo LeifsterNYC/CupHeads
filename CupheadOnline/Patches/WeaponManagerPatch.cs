@@ -33,6 +33,7 @@ namespace CupheadOnline.Patches
         static void BroadcastShot(LevelPlayerController player, byte eventType)
         {
             if (!MultiplayerSession.IsActive) return;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
             var motor = player.motor;
             var pkt = new WeaponEventPacket
             {
@@ -49,6 +50,7 @@ namespace CupheadOnline.Patches
         static void BroadcastWeaponSwitch(LevelPlayerController player, Weapon next)
         {
             if (!MultiplayerSession.IsActive) return;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
             var motor = player.motor;
             var pkt = new WeaponEventPacket
             {
@@ -72,6 +74,7 @@ namespace CupheadOnline.Patches
         static void Postfix(LevelPlayerParryController __instance)
         {
             if (!MultiplayerSession.IsActive) return;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
             var player = __instance.player;
             if (player == null || !MultiplayerSession.IsLocalPlayer(player.id)) return;
 

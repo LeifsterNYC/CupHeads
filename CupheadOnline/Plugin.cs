@@ -112,7 +112,7 @@ namespace CupheadOnline
 
             // Player lifecycle
             PatchSafe(harmony, typeof(PlayerManagerAwakePatch));
-            PatchSafe(harmony, typeof(PlayerManagerGetPlayerInputPatch));
+            PatchSafe(harmony, typeof(PlayerInputInitPatch));
             PatchSafe(harmony, typeof(MapAwakePatch));
             PatchSafe(harmony, typeof(MapCreatePlayersPatch));
             PatchSafe(harmony, typeof(PlayerLevelInitPatch));
@@ -272,6 +272,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupHeads";
-        public const string VERSION = "1.2.6";
+        public const string VERSION = "1.2.7";
     }
 }

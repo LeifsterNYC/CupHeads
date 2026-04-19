@@ -12,7 +12,7 @@ namespace CupheadOnline.Patches
 
         internal static void TrySendImmediateState(AbstractPlayerController player)
         {
-            if (!MultiplayerSession.IsActive || Plugin.Net == null || player == null)
+            if (!MultiplayerSession.IsActive || Plugin.Net == null || !Plugin.Net.IsConnected || player == null)
                 return;
             if (!MultiplayerSession.IsLocalPlayer(player.id))
                 return;

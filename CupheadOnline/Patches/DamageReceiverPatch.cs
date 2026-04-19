@@ -34,6 +34,7 @@ namespace CupheadOnline.Patches
         static void Postfix(PlayerDamageReceiver __instance, DamageDealer.DamageInfo info)
         {
             if (!MultiplayerSession.IsHost) return;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
             if (info.damage <= 0f && info.stoneTime <= 0f) return;
 
             var player = __instance.GetComponent<AbstractPlayerController>();

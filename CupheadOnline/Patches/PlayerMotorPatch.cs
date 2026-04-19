@@ -56,6 +56,7 @@ namespace CupheadOnline.Patches
         static void Postfix(LevelPlayerMotor __instance)
         {
             if (!MultiplayerSession.IsActive) return;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return;
 
             var player = __instance.player;
             if (player == null) return;

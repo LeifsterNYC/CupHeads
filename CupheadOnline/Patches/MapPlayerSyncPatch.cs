@@ -90,7 +90,7 @@ namespace CupheadOnline.Patches
 
         static void Postfix(MapPlayerMotor __instance)
         {
-            if (!MultiplayerSession.IsActive || Plugin.Net == null)
+            if (!MultiplayerSession.IsActive || Plugin.Net == null || !Plugin.Net.IsConnected)
                 return;
 
             var player = __instance != null ? __instance.player : null;

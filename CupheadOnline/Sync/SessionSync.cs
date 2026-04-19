@@ -4,6 +4,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using CupheadOnline.Net;
+using CupheadOnline.Patches;
 using CupheadOnline.UI;
 
 namespace CupheadOnline.Sync
@@ -924,6 +925,7 @@ namespace CupheadOnline.Sync
                 _lastAutoFollowAt = Time.unscaledTime;
                 ConnectionHUD.Show("Following host into level...");
                 Plugin.Log.LogInfo("[Session] Auto-following host level " + ((Levels)snapshot.CurrentLevel) + ".");
+                SceneSyncState.AllowNextClientLevelLoad();
                 SceneLoader.LoadLevel((Levels)snapshot.CurrentLevel, SceneLoader.Transition.Iris);
                 return;
             }
@@ -938,6 +940,7 @@ namespace CupheadOnline.Sync
             _lastAutoFollowAt = Time.unscaledTime;
             ConnectionHUD.Show("Following host scene...");
             Plugin.Log.LogInfo("[Session] Auto-following host scene " + targetScene + ".");
+            SceneSyncState.AllowNextClientSceneLoad();
             SceneLoader.LoadScene(
                 targetScene,
                 SceneLoader.Transition.Iris,

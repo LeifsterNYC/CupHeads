@@ -1,12 +1,16 @@
 using HarmonyLib;
 using CupheadOnline.Net;
 using CupheadOnline.Sync;
+using UnityEngine;
 
 namespace CupheadOnline.Patches
 {
     internal static class SceneSyncState
     {
         internal static bool SuppressMenuSceneBroadcast;
+        static int _clientSceneLoadAllowance;
+        static float _clientSceneLoadAllowanceSetAt = -10f;
+        static float _lastBlockedClientSceneLogAt = -10f;
 
         internal static void ResetTransientSyncState()
         {
@@ -16,19 +20,64 @@ namespace CupheadOnline.Patches
             RemoteInputDriver.Reset();
             ExtraParticipantTracker.Reset();
         }
+
+        internal static void AllowNextClientSceneLoad()
+        {
+            if (MultiplayerSession.IsClient)
+            {
+                _clientSceneLoadAllowance = System.Math.Max(_clientSceneLoadAllowance, 1);
+                _clientSceneLoadAllowanceSetAt = Time.unscaledTime;
+            }
+        }
+
+        internal static void AllowNextClientLevelLoad()
+        {
+            if (MultiplayerSession.IsClient)
+            {
+                _clientSceneLoadAllowance = System.Math.Max(_clientSceneLoadAllowance, 2);
+                _clientSceneLoadAllowanceSetAt = Time.unscaledTime;
+            }
+        }
+
+        internal static bool CanStartSceneLoadAsThisPeer(string label)
+        {
+            if (!MultiplayerSession.IsActive || MultiplayerSession.IsHost)
+                return true;
+
+            if (_clientSceneLoadAllowance > 0
+             && Time.unscaledTime - _clientSceneLoadAllowanceSetAt <= 2f)
+            {
+                _clientSceneLoadAllowance--;
+                return true;
+            }
+
+            _clientSceneLoadAllowance = 0;
+
+            if (Time.unscaledTime - _lastBlockedClientSceneLogAt > 2f)
+            {
+                _lastBlockedClientSceneLogAt = Time.unscaledTime;
+                Plugin.Log.LogInfo("[SceneSync] Blocked local client scene load: " + label + ". Waiting for host.");
+            }
+
+            return false;
+        }
     }
 
     [HarmonyPatch(typeof(SceneLoader), "LoadLevel",
         typeof(Levels), typeof(SceneLoader.Transition), typeof(SceneLoader.Icon), typeof(SceneLoader.Context))]
     public static class SceneLoaderLevelsPatch
     {
-        static void Prefix(Levels level)
+        static bool Prefix(Levels level)
         {
-            if (!MultiplayerSession.IsActive) return;
+            if (!SceneSyncState.CanStartSceneLoadAsThisPeer("level " + level))
+                return false;
+
+            if (!MultiplayerSession.IsActive) return true;
 
             SceneSyncState.ResetTransientSyncState();
 
-            if (!MultiplayerSession.IsHost) return;
+            if (!MultiplayerSession.IsHost) return true;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return true;
 
             SceneSyncState.SuppressMenuSceneBroadcast = true;
 
@@ -38,6 +87,7 @@ namespace CupheadOnline.Patches
                 RngSeed   = RngSync.NextSeed(),
             };
             Plugin.Net.SendSceneChange(ref pkt);
+            return true;
         }
 
         static void Postfix()
@@ -50,18 +100,22 @@ namespace CupheadOnline.Patches
         typeof(Scenes), typeof(SceneLoader.Transition), typeof(SceneLoader.Transition), typeof(SceneLoader.Icon), typeof(SceneLoader.Context))]
     public static class SceneLoaderScenesPatch
     {
-        static void Prefix(
+        static bool Prefix(
             Scenes scene,
             SceneLoader.Transition transitionStart,
             SceneLoader.Transition transitionEnd,
             SceneLoader.Icon icon)
         {
-            if (!MultiplayerSession.IsActive) return;
+            if (!SceneSyncState.CanStartSceneLoadAsThisPeer("scene " + scene))
+                return false;
+
+            if (!MultiplayerSession.IsActive) return true;
 
             SceneSyncState.ResetTransientSyncState();
 
-            if (!MultiplayerSession.IsHost) return;
-            if (SceneSyncState.SuppressMenuSceneBroadcast) return;
+            if (!MultiplayerSession.IsHost) return true;
+            if (Plugin.Net == null || !Plugin.Net.IsConnected) return true;
+            if (SceneSyncState.SuppressMenuSceneBroadcast) return true;
 
             var pkt = new MenuSceneChangePacket
             {
@@ -72,6 +126,7 @@ namespace CupheadOnline.Patches
                 RngSeed         = RngSync.NextSeed(),
             };
             Plugin.Net.SendMenuSceneChange(ref pkt);
+            return true;
         }
     }
 }
