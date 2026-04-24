@@ -114,7 +114,7 @@ namespace CupheadOnline.UI
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("[StartupSplash] Video prepare failed: " + ex.Message);
-                BeginClose();
+                BeginClose(true);
             }
         }
 
@@ -171,7 +171,7 @@ namespace CupheadOnline.UI
             _videoPlayer.waitForFirstFrame = true;
             _videoPlayer.isLooping = false;
             _videoPlayer.source = VideoSource.Url;
-            _videoPlayer.url = new Uri(videoPath).AbsoluteUri;
+            _videoPlayer.url = videoPath;
             _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
             _videoPlayer.targetTexture = _renderTexture;
             _videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
@@ -219,7 +219,7 @@ namespace CupheadOnline.UI
             if (!_prepared && Time.unscaledTime - _createdAt > PrepareTimeoutSeconds)
             {
                 Plugin.Log.LogWarning("[StartupSplash] Prepare timeout; skipping splash.");
-                BeginClose();
+                BeginClose(true);
                 return;
             }
 
@@ -229,7 +229,7 @@ namespace CupheadOnline.UI
             if (Plugin.StartupSplashAllowSkip && IsSkipPressed())
             {
                 Plugin.Log.LogInfo("[StartupSplash] Skipped by player.");
-                BeginClose();
+                BeginClose(false);
             }
         }
 
@@ -248,35 +248,57 @@ namespace CupheadOnline.UI
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("[StartupSplash] Video play failed: " + ex.Message);
-                BeginClose();
+                BeginClose(true);
             }
         }
 
         private void OnFinished(VideoPlayer source)
         {
-            BeginClose();
+            BeginClose(false);
         }
 
         private void OnError(VideoPlayer source, string message)
         {
             Plugin.Log.LogWarning("[StartupSplash] Video error: " + message);
-            BeginClose();
+            BeginClose(true);
         }
 
-        private void BeginClose()
+        private void BeginClose(bool immediate)
         {
             if (_closing)
                 return;
 
+            StopPlayback();
+
+            if (immediate)
+            {
+                if (_canvasGroup != null)
+                    _canvasGroup.alpha = 0f;
+                Hide();
+                return;
+            }
+
             _closing = true;
             _closingStartedAt = Time.unscaledTime;
+        }
 
+        private void StopPlayback()
+        {
             try
             {
-                if (_videoPlayer != null && _videoPlayer.isPlaying)
+                if (_videoPlayer != null)
+                {
                     _videoPlayer.Stop();
-                if (_audioSource != null && _audioSource.isPlaying)
+                    _videoPlayer.targetTexture = null;
+                    _videoPlayer.enabled = false;
+                }
+
+                if (_audioSource != null)
+                {
                     _audioSource.Stop();
+                    _audioSource.clip = null;
+                    _audioSource.enabled = false;
+                }
             }
             catch
             {
@@ -351,6 +373,8 @@ namespace CupheadOnline.UI
 
             try
             {
+                StopPlayback();
+
                 if (_videoPlayer != null)
                 {
                     _videoPlayer.prepareCompleted -= OnPrepared;

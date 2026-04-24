@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.16 - 2026-04-24
+
+- Re-encoded the bundled startup splash from HEVC/H.265 1440p60 to Unity-friendly H.264 1080p30 with AAC audio.
+- Moved startup splash playback out of plugin `Awake()` so Unity video decoding no longer starts while BepInEx is still patching the game.
+- Hardened startup splash errors so unsupported videos stop and destroy immediately instead of fading through a failed media state.
+- Documented that replacement splash videos should avoid HEVC/H.265 for Cuphead's Unity 2017 runtime.
+
 ## v1.2.15 - 2026-04-24
 
 - Added an optional CupHeads startup splash video player that looks for `BepInEx/plugins/CupheadOnline/Assets/CupHeadsIntro.mp4`.

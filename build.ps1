@@ -86,6 +86,64 @@ function Ensure-BepInExBundle([string]$AssetsDir) {
     }
 }
 
+function Get-VideoFrameRate([string]$RateText) {
+    if (-not $RateText) { return 0 }
+    if ($RateText -match '^(\d+)/(\d+)$') {
+        $den = [double]$Matches[2]
+        if ($den -eq 0) { return 0 }
+        return [double]$Matches[1] / $den
+    }
+    $value = 0.0
+    if ([double]::TryParse($RateText, [ref]$value)) { return $value }
+    return 0
+}
+
+function Optimize-StartupSplashVideo([string]$AssetsDir) {
+    $SplashPath = Join-Path $AssetsDir "StartupSplash\CupHeadsIntro.mp4"
+    if (-not (Test-Path $SplashPath)) { return }
+
+    $Ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
+    $Ffmpeg  = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if (-not $Ffprobe -or -not $Ffmpeg) {
+        Write-Host "  Startup splash present, but ffmpeg/ffprobe were not found; skipping codec normalization." -ForegroundColor Yellow
+        return
+    }
+
+    $Probe = & $Ffprobe.Source -v error -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt,avg_frame_rate -of default=noprint_wrappers=1 $SplashPath
+    $Info = @{}
+    foreach ($line in $Probe) {
+        $idx = $line.IndexOf("=")
+        if ($idx -gt 0) {
+            $Info[$line.Substring(0, $idx)] = $line.Substring($idx + 1)
+        }
+    }
+
+    $Codec = if ($Info.ContainsKey("codec_name")) { $Info["codec_name"] } else { "" }
+    $PixFmt = if ($Info.ContainsKey("pix_fmt")) { $Info["pix_fmt"] } else { "" }
+    $Width = if ($Info.ContainsKey("width")) { [int]$Info["width"] } else { 0 }
+    $Height = if ($Info.ContainsKey("height")) { [int]$Info["height"] } else { 0 }
+    $Fps = if ($Info.ContainsKey("avg_frame_rate")) { Get-VideoFrameRate $Info["avg_frame_rate"] } else { 0 }
+
+    $NeedsTranscode = $Codec -ne "h264" -or $PixFmt -ne "yuv420p" -or $Width -gt 1920 -or $Height -gt 1080 -or $Fps -gt 31
+    if (-not $NeedsTranscode) {
+        Write-Host "  Startup splash already uses a Unity-friendly video format." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "  Transcoding startup splash for Unity 2017 compatibility..." -ForegroundColor Cyan
+    $TempPath = Join-Path (Split-Path $SplashPath -Parent) "CupHeadsIntro.unitysafe.mp4"
+    Remove-Item $TempPath -Force -ErrorAction SilentlyContinue
+
+    & $Ffmpeg.Source -y -i $SplashPath -vf "scale=1920:-2,fps=30,format=yuv420p" -c:v libx264 -profile:v main -level 4.0 -preset medium -crf 20 -c:a aac -b:a 192k -ar 44100 -ac 2 -movflags +faststart $TempPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $TempPath)) {
+        Remove-Item $TempPath -Force -ErrorAction SilentlyContinue
+        Fail "Startup splash transcode failed."
+    }
+
+    Move-Item $TempPath $SplashPath -Force
+    Write-Host "  Startup splash normalized to H.264 1080p30 + AAC." -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "  +====================================+" -ForegroundColor Yellow
 Write-Host "  |      CupHeads Build Script         |" -ForegroundColor Yellow
@@ -153,6 +211,9 @@ Copy-Item $ModDll (Join-Path $DistDir "CupheadOnline.dll") -Force
 Write-Step "Staging DLL for Electron installer"
 New-Item -ItemType Directory -Force $InstallerAssetsDir | Out-Null
 Copy-Item $ModDll (Join-Path $InstallerAssetsDir "CupheadOnline.dll") -Force
+
+Write-Step "Checking startup splash video"
+Optimize-StartupSplashVideo -AssetsDir $InstallerAssetsDir
 
 Write-Step "Bundling BepInEx repair packages"
 Ensure-BepInExBundle -AssetsDir $InstallerAssetsDir

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -105,8 +106,6 @@ namespace CupheadOnline
                 "Extra boss HP added per extra active player. Example: 0.35 means 2 players = 1.35x HP.");
             _cfgPreferredPlayerColor = Config.Bind("Cosmetics", "PreferredPlayerColor", PlayerColorSync.AutoSelection,
                 "Lobby and in-game player color. 0 = Auto, 1 = Classic, 2+ = fixed tint.");
-
-            StartupSplashPlayer.TryShow();
 
             // Networking manager — Steam P2P transport (lobby + invite flow)
             Net = new SteamNetManager();
@@ -237,6 +236,15 @@ namespace CupheadOnline
 
             Log.LogInfo("[Plugin] Patch pass complete.");
             SessionPausePanel.Ensure();
+        }
+
+        IEnumerator Start()
+        {
+            // Keep VideoPlayer startup out of Awake; Unity 2017 can behave badly
+            // if media decoding starts while the chainloader is still patching.
+            yield return null;
+            yield return null;
+            StartupSplashPlayer.TryShow();
         }
 
         static void PatchTracked(Harmony harmony, HashSet<Type> registeredPatchTypes, Type patchType)
@@ -398,6 +406,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupHeads";
-        public const string VERSION = "1.2.15";
+        public const string VERSION = "1.2.16";
     }
 }
