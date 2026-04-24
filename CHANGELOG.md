@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.20 - 2026-04-24
+
+- Hardened startup splash playback against Unity 2017 `VideoPlayer` callback loops by detaching the prepare callback as soon as it fires.
+- Added splash playback watchdogs so a stuck, stopped, or missing `loopPointReached` event closes the overlay instead of leaving Cuphead on a black screen.
+- Kept the existing frame-zero/focus wait behavior from v1.2.19 while making the splash fail open if Unity's media backend acts up.
+
 ## v1.2.19 - 2026-04-24
 
 - Fixed a Unity 2017 `VideoPlayer` prepare loop caused by calling `Stop()` inside `prepareCompleted`.

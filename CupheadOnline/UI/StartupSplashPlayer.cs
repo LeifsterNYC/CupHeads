@@ -16,6 +16,7 @@ namespace CupheadOnline.UI
     {
         private const string VideoFileName = "CupHeadsIntro.mp4";
         private const float PrepareTimeoutSeconds = 8f;
+        private const float MaxPlaybackSeconds = 45f;
         private const float FadeOutSeconds = 0.35f;
         private const int NoiseWidth = 320;
         private const int NoiseHeight = 180;
@@ -35,11 +36,14 @@ namespace CupheadOnline.UI
         private float _createdAt;
         private float _nextNoiseAt;
         private float _closingStartedAt = -1f;
+        private float _playbackStartedAt = -1f;
+        private float _forceCloseAt = -1f;
         private float _previousTimeScale = 1f;
         private bool _previousAudioListenerPause;
         private bool _prepared;
         private bool _playbackStarting;
         private bool _playbackStarted;
+        private bool _playbackLogged;
         private bool _closing;
         private bool _gateApplied;
 
@@ -291,6 +295,24 @@ namespace CupheadOnline.UI
             {
                 Plugin.Log.LogInfo("[StartupSplash] Skipped by player.");
                 BeginClose(false);
+                return;
+            }
+
+            if (_playbackStarted && _forceCloseAt > 0f && Time.unscaledTime >= _forceCloseAt)
+            {
+                Plugin.Log.LogWarning("[StartupSplash] Playback watchdog finished the splash.");
+                BeginClose(false);
+                return;
+            }
+
+            if (_playbackStarted
+                && _playbackStartedAt > 0f
+                && Time.unscaledTime - _playbackStartedAt > 3f
+                && _videoPlayer != null
+                && !_videoPlayer.isPlaying)
+            {
+                Plugin.Log.LogWarning("[StartupSplash] Video stopped before Unity sent loopPointReached; closing splash.");
+                BeginClose(false);
             }
         }
 
@@ -303,6 +325,16 @@ namespace CupheadOnline.UI
 
             _prepared = true;
             _playbackStarting = true;
+
+            try
+            {
+                source.prepareCompleted -= OnPrepared;
+            }
+            catch
+            {
+                // Older Unity video backends can be noisy during teardown.
+            }
+
             StartCoroutine(PlayFromBeginning(source));
         }
 
@@ -334,8 +366,14 @@ namespace CupheadOnline.UI
                     _videoImage.color = Color.white;
                 _playbackStarted = true;
                 _playbackStarting = false;
+                _playbackStartedAt = Time.unscaledTime;
+                _forceCloseAt = CalculateForceCloseAt(source);
                 source.Play();
-                Plugin.Log.LogInfo("[StartupSplash] Playing startup splash from frame 0 with audio.");
+                if (!_playbackLogged)
+                {
+                    _playbackLogged = true;
+                    Plugin.Log.LogInfo("[StartupSplash] Playing startup splash from frame 0 with audio.");
+                }
             }
             catch (Exception ex)
             {
@@ -348,6 +386,33 @@ namespace CupheadOnline.UI
         private void OnFinished(VideoPlayer source)
         {
             BeginClose(false);
+        }
+
+        private float CalculateForceCloseAt(VideoPlayer source)
+        {
+            try
+            {
+                double length = 0.0;
+                if (source != null)
+                {
+                    var lengthProperty = source.GetType().GetProperty("length");
+                    if (lengthProperty != null)
+                    {
+                        object value = lengthProperty.GetValue(source, null);
+                        if (value != null)
+                            length = Convert.ToDouble(value);
+                    }
+                }
+
+                if (length > 0.1 && length < MaxPlaybackSeconds)
+                    return Time.unscaledTime + (float)length + 1.5f;
+            }
+            catch
+            {
+                // If Unity cannot report length, fall back to a conservative cap.
+            }
+
+            return Time.unscaledTime + MaxPlaybackSeconds;
         }
 
         private void OnError(VideoPlayer source, string message)
