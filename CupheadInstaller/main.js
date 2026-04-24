@@ -14,6 +14,7 @@ const DEFAULT_INSTALL_MANIFEST = Object.freeze({
   pluginFolder: 'CupheadOnline',
   files: [
     { name: 'CupheadOnline.dll', required: true, target: 'CupheadOnline.dll' },
+    { name: 'StartupSplash/CupHeadsIntro.mp4', required: false, target: 'Assets/CupHeadsIntro.mp4' },
   ],
   legacyCleanup: [
     'LiteNetLib.dll',
@@ -293,6 +294,7 @@ function copyBundledModFile(file) {
   const tempPath = file.destinationPath + '.tmp-' + process.pid;
 
   try {
+    fs.mkdirSync(path.dirname(file.destinationPath), { recursive: true });
     try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch { /* best-effort */ }
     fs.copyFileSync(file.sourcePath, tempPath);
     fs.renameSync(tempPath, file.destinationPath);
@@ -607,22 +609,27 @@ ipcMain.on('install', async (event, { cupheadDir, skipBepInEx }) => {
     const pluginDir = getPluginDir(cupheadDir, manifest);
     fs.mkdirSync(pluginDir, { recursive: true });
 
-    const bundledFiles = manifest.files.map((file) => {
+    const bundledFiles = [];
+    for (const file of manifest.files) {
       const sourcePath = resolveBundledFile(file.name);
       if (!fs.existsSync(sourcePath)) {
-        throw new Error(
-          file.name + ' was not found in the installer package.\n'
-          + 'Rebuild the installer after staging the latest bundled files.'
-        );
+        if (file.required) {
+          throw new Error(
+            file.name + ' was not found in the installer package.\n'
+            + 'Rebuild the installer after staging the latest bundled files.'
+          );
+        }
+
+        continue;
       }
 
-      return {
+      bundledFiles.push({
         name: file.name,
         target: file.target,
         sourcePath,
         destinationPath: path.join(pluginDir, file.target),
-      };
-    });
+      });
+    }
 
     send('step', {
       step: 'plugin',

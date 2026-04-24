@@ -33,6 +33,11 @@ namespace CupheadOnline
         static ConfigEntry<bool> _cfgShowBossHealthBars;
         static ConfigEntry<bool> _cfgShowBattleAssistHud;
         static ConfigEntry<bool> _cfgEnableQoLHotkeys;
+        static ConfigEntry<bool> _cfgEnableStartupSplash;
+        static ConfigEntry<bool> _cfgStartupSplashAllowSkip;
+        static ConfigEntry<bool> _cfgStartupSplashStaticOverlay;
+        static ConfigEntry<float> _cfgStartupSplashVolume;
+        static ConfigEntry<float> _cfgStartupSplashStaticIntensity;
         static ConfigEntry<bool> _cfgBossHpScalingEnabled;
         static ConfigEntry<float> _cfgBossHpPerExtraPlayer;
         static ConfigEntry<int> _cfgPreferredPlayerColor;
@@ -45,6 +50,13 @@ namespace CupheadOnline
         public static bool ShowBossHealthBars => _cfgShowBossHealthBars == null || _cfgShowBossHealthBars.Value;
         public static bool ShowBattleAssistHud => _cfgShowBattleAssistHud == null || _cfgShowBattleAssistHud.Value;
         public static bool EnableQoLHotkeys => _cfgEnableQoLHotkeys == null || _cfgEnableQoLHotkeys.Value;
+        public static bool EnableStartupSplash => _cfgEnableStartupSplash == null || _cfgEnableStartupSplash.Value;
+        public static bool StartupSplashAllowSkip => _cfgStartupSplashAllowSkip == null || _cfgStartupSplashAllowSkip.Value;
+        public static bool StartupSplashStaticOverlay => _cfgStartupSplashStaticOverlay == null || _cfgStartupSplashStaticOverlay.Value;
+        public static float StartupSplashVolume =>
+            _cfgStartupSplashVolume == null ? 1f : Mathf.Clamp01(_cfgStartupSplashVolume.Value);
+        public static float StartupSplashStaticIntensity =>
+            _cfgStartupSplashStaticIntensity == null ? 0.28f : Mathf.Clamp01(_cfgStartupSplashStaticIntensity.Value);
         public static bool BossHpScalingEnabled => _cfgBossHpScalingEnabled != null && _cfgBossHpScalingEnabled.Value;
         public static float BossHpPerExtraPlayer =>
             _cfgBossHpPerExtraPlayer == null ? 0.35f : Mathf.Max(0f, _cfgBossHpPerExtraPlayer.Value);
@@ -77,12 +89,24 @@ namespace CupheadOnline
                 "Show a compact battle timer/stats HUD during battle levels.");
             _cfgEnableQoLHotkeys = Config.Bind("Controls", "EnableQoLHotkeys", true,
                 "Enable CupHeads hotkeys: F6 resync, F7 boss bars, F9 copy diagnostics, F10 battle HUD.");
+            _cfgEnableStartupSplash = Config.Bind("StartupSplash", "EnableStartupSplash", true,
+                "Play BepInEx/plugins/CupheadOnline/Assets/CupHeadsIntro.mp4 over the game's startup/title intro.");
+            _cfgStartupSplashAllowSkip = Config.Bind("StartupSplash", "AllowSkip", true,
+                "Allow Escape, Z, Enter, Space, or controller confirm/back/start to skip the startup splash.");
+            _cfgStartupSplashStaticOverlay = Config.Bind("StartupSplash", "StaticOverlay", true,
+                "Draw an extra Cuphead-style live film-static overlay on top of the startup splash video.");
+            _cfgStartupSplashVolume = Config.Bind("StartupSplash", "Volume", 1f,
+                "Startup splash audio volume from 0.0 to 1.0.");
+            _cfgStartupSplashStaticIntensity = Config.Bind("StartupSplash", "StaticIntensity", 0.28f,
+                "Startup splash static overlay intensity from 0.0 to 1.0.");
             _cfgBossHpScalingEnabled = Config.Bind("Balance", "EnableBossHpScalingByPlayerCount", false,
                 "Scale battle-level boss HP by connected player count. Disabled by default.");
             _cfgBossHpPerExtraPlayer = Config.Bind("Balance", "BossHpPerExtraPlayer", 0.35f,
                 "Extra boss HP added per extra active player. Example: 0.35 means 2 players = 1.35x HP.");
             _cfgPreferredPlayerColor = Config.Bind("Cosmetics", "PreferredPlayerColor", PlayerColorSync.AutoSelection,
                 "Lobby and in-game player color. 0 = Auto, 1 = Classic, 2+ = fixed tint.");
+
+            StartupSplashPlayer.TryShow();
 
             // Networking manager — Steam P2P transport (lobby + invite flow)
             Net = new SteamNetManager();
@@ -301,6 +325,7 @@ namespace CupheadOnline
             BossHealthScaler.Reset();
             BossHealthBarOverlay.Hide();
             BattleAssistHud.Hide();
+            StartupSplashPlayer.Hide();
         }
 
         public static bool ToggleBossHealthBars()
@@ -352,6 +377,10 @@ namespace CupheadOnline
                           + "Show Boss Health Bars: " + ShowBossHealthBars + nl
                           + "Show Battle Assist HUD: " + ShowBattleAssistHud + nl
                           + "QoL Hotkeys Enabled: " + EnableQoLHotkeys + nl
+                          + "Startup Splash Enabled: " + EnableStartupSplash + nl
+                          + "Startup Splash Video: " + (StartupSplashPlayer.ResolveVideoPath() ?? "missing") + nl
+                          + "Startup Splash Static: " + StartupSplashStaticOverlay + nl
+                          + "Startup Splash Volume: " + StartupSplashVolume.ToString("0.00") + nl
                           + "Boss HP Scaling Enabled: " + BossHpScalingEnabled + nl
                           + "Boss HP Per Extra Player: " + BossHpPerExtraPlayer.ToString("0.00") + nl
                           + BossHealthScaler.GetStatusSummary() + nl;
@@ -369,6 +398,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupHeads";
-        public const string VERSION = "1.2.14";
+        public const string VERSION = "1.2.15";
     }
 }

@@ -190,6 +190,15 @@ if (-not $NoDeploy) {
     New-Item -ItemType Directory -Force $PluginDir | Out-Null
     Remove-Item (Join-Path $PluginDir "LiteNetLib.dll") -Force -ErrorAction SilentlyContinue
     Copy-Item $ModDll (Join-Path $PluginDir "CupheadOnline.dll") -Force
+
+    $StartupSplash = Join-Path $InstallerAssetsDir "StartupSplash\CupHeadsIntro.mp4"
+    if (Test-Path $StartupSplash) {
+        $PluginAssetsDir = Join-Path $PluginDir "Assets"
+        New-Item -ItemType Directory -Force $PluginAssetsDir | Out-Null
+        Copy-Item $StartupSplash (Join-Path $PluginAssetsDir "CupHeadsIntro.mp4") -Force
+        Write-Host "  Deployed startup splash video." -ForegroundColor Green
+    }
+
     Write-Host "  Deployed to: $PluginDir" -ForegroundColor Green
 }
 

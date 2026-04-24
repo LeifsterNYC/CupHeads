@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.15 - 2026-04-24
+
+- Added an optional CupHeads startup splash video player that looks for `BepInEx/plugins/CupheadOnline/Assets/CupHeadsIntro.mp4`.
+- Added audio playback for the startup splash through Unity's `VideoPlayer` + `AudioSource` path.
+- Added skip support for `Escape`, `Z`, `Enter`, `Space`, controller confirm, controller back, and controller start.
+- Added a live film-static overlay with configurable intensity so clean intro videos can still get a Cuphead-style projector/static pass.
+- Updated the installer to bundle and repair-copy `StartupSplash/CupHeadsIntro.mp4` into the plugin `Assets` folder.
+- Added fail-open guards so missing, unsupported, or slow-to-prepare videos skip safely instead of blocking the game boot.
+
 ## v1.2.14 - 2026-04-24
 
 - Added a Battle Assist HUD for battle levels with a live timer, local deaths, retries, parries, and optional boss HP multiplier readout.
