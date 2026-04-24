@@ -31,11 +31,17 @@ namespace CupheadOnline.UI
         private Texture2D _noiseTexture;
         private Color32[] _noisePixels;
 
+        private string _videoPath;
         private float _createdAt;
         private float _nextNoiseAt;
         private float _closingStartedAt = -1f;
+        private float _previousTimeScale = 1f;
+        private bool _previousAudioListenerPause;
         private bool _prepared;
         private bool _closing;
+        private bool _gateApplied;
+
+        public static bool IsBlockingGame => Instance != null && Instance._gateApplied;
 
         public static void TryShow()
         {
@@ -101,15 +107,28 @@ namespace CupheadOnline.UI
 
         private void Begin(string videoPath)
         {
+            _videoPath = videoPath;
             _createdAt = Time.unscaledTime;
             BuildCanvas();
-            BuildVideoPlayer(videoPath);
             BuildStaticOverlay();
+            ApplyGameGate();
+            StartCoroutine(PrepareWhenSafe());
+        }
+
+        private System.Collections.IEnumerator PrepareWhenSafe()
+        {
+            // Let Unity finish the boot frame, but keep Cuphead paused behind the splash.
+            yield return null;
+            yield return null;
+
+            if (_closing || string.IsNullOrEmpty(_videoPath))
+                yield break;
 
             try
             {
+                BuildVideoPlayer(_videoPath);
                 _videoPlayer.Prepare();
-                Plugin.Log.LogInfo("[StartupSplash] Preparing " + videoPath);
+                Plugin.Log.LogInfo("[StartupSplash] Preparing " + _videoPath);
             }
             catch (Exception ex)
             {
@@ -131,7 +150,7 @@ namespace CupheadOnline.UI
             _canvasGroup = gameObject.AddComponent<CanvasGroup>();
             _canvasGroup.alpha = 1f;
             _canvasGroup.interactable = false;
-            _canvasGroup.blocksRaycasts = false;
+            _canvasGroup.blocksRaycasts = true;
 
             var background = new GameObject("BlackBackground");
             background.transform.SetParent(transform, false);
@@ -164,6 +183,7 @@ namespace CupheadOnline.UI
             _audioSource = gameObject.AddComponent<AudioSource>();
             _audioSource.playOnAwake = false;
             _audioSource.loop = false;
+            _audioSource.ignoreListenerPause = true;
             _audioSource.volume = Mathf.Clamp01(Plugin.StartupSplashVolume);
 
             _videoPlayer = gameObject.AddComponent<VideoPlayer>();
@@ -204,6 +224,28 @@ namespace CupheadOnline.UI
             UpdateNoise(true);
         }
 
+        private void ApplyGameGate()
+        {
+            if (_gateApplied)
+                return;
+
+            _previousTimeScale = Time.timeScale;
+            _previousAudioListenerPause = AudioListener.pause;
+            Time.timeScale = 0f;
+            AudioListener.pause = true;
+            _gateApplied = true;
+        }
+
+        private void ReleaseGameGate()
+        {
+            if (!_gateApplied)
+                return;
+
+            Time.timeScale = _previousTimeScale;
+            AudioListener.pause = _previousAudioListenerPause;
+            _gateApplied = false;
+        }
+
         private void Update()
         {
             if (_closing)
@@ -212,7 +254,10 @@ namespace CupheadOnline.UI
                 if (_canvasGroup != null)
                     _canvasGroup.alpha = 1f - t;
                 if (t >= 1f)
+                {
+                    ReleaseGameGate();
                     Hide();
+                }
                 return;
             }
 
@@ -274,6 +319,7 @@ namespace CupheadOnline.UI
             {
                 if (_canvasGroup != null)
                     _canvasGroup.alpha = 0f;
+                ReleaseGameGate();
                 Hide();
                 return;
             }
@@ -373,6 +419,7 @@ namespace CupheadOnline.UI
 
             try
             {
+                ReleaseGameGate();
                 StopPlayback();
 
                 if (_videoPlayer != null)

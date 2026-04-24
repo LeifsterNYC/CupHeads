@@ -53,7 +53,7 @@ namespace CupheadOnline
         public static bool EnableQoLHotkeys => _cfgEnableQoLHotkeys == null || _cfgEnableQoLHotkeys.Value;
         public static bool EnableStartupSplash => _cfgEnableStartupSplash == null || _cfgEnableStartupSplash.Value;
         public static bool StartupSplashAllowSkip => _cfgStartupSplashAllowSkip == null || _cfgStartupSplashAllowSkip.Value;
-        public static bool StartupSplashStaticOverlay => _cfgStartupSplashStaticOverlay == null || _cfgStartupSplashStaticOverlay.Value;
+        public static bool StartupSplashStaticOverlay => _cfgStartupSplashStaticOverlay != null && _cfgStartupSplashStaticOverlay.Value;
         public static float StartupSplashVolume =>
             _cfgStartupSplashVolume == null ? 1f : Mathf.Clamp01(_cfgStartupSplashVolume.Value);
         public static float StartupSplashStaticIntensity =>
@@ -94,8 +94,8 @@ namespace CupheadOnline
                 "Play BepInEx/plugins/CupheadOnline/Assets/CupHeadsIntro.mp4 over the game's startup/title intro.");
             _cfgStartupSplashAllowSkip = Config.Bind("StartupSplash", "AllowSkip", true,
                 "Allow Escape, Z, Enter, Space, or controller confirm/back/start to skip the startup splash.");
-            _cfgStartupSplashStaticOverlay = Config.Bind("StartupSplash", "StaticOverlay", true,
-                "Draw an extra Cuphead-style live film-static overlay on top of the startup splash video.");
+            _cfgStartupSplashStaticOverlay = Config.Bind("StartupSplash", "FilmStaticOverlay", false,
+                "Draw an extra live film-static overlay on top of the startup splash video. Off by default because baked-in video static looks cleaner.");
             _cfgStartupSplashVolume = Config.Bind("StartupSplash", "Volume", 1f,
                 "Startup splash audio volume from 0.0 to 1.0.");
             _cfgStartupSplashStaticIntensity = Config.Bind("StartupSplash", "StaticIntensity", 0.28f,
@@ -144,6 +144,8 @@ namespace CupheadOnline
             var registeredPatchTypes = new HashSet<Type>();
 
             // Core UI — SlotSelect patches inject the native MULTIPLAYER menu item
+            PatchTracked(harmony, registeredPatchTypes, typeof(StartScreenSplashGatePatch));
+            PatchTracked(harmony, registeredPatchTypes, typeof(StartScreenAudioSplashGatePatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(SlotSelectAwakePatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(SlotSelectUpdatePatch));
 
@@ -406,6 +408,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupHeads";
-        public const string VERSION = "1.2.16";
+        public const string VERSION = "1.2.17";
     }
 }

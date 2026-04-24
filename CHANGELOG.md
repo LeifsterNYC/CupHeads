@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.17 - 2026-04-24
+
+- Changed startup splash playback into a true boot gate: Cuphead is paused and background game audio is muted while the intro video plays.
+- Added StartScreen and StartScreenAudio input gates so pressing a key during the splash can no longer trigger the title screen underneath.
+- Turned the procedural film-static overlay off by default and moved it to the new `StartupSplash.FilmStaticOverlay` config key.
+- Preserved splash audio while game audio is muted by using `AudioSource.ignoreListenerPause`.
+- Restored the previous game time scale and audio pause state after the splash ends, skips, errors, or gets destroyed.
+
 ## v1.2.16 - 2026-04-24
 
 - Re-encoded the bundled startup splash from HEVC/H.265 1440p60 to Unity-friendly H.264 1080p30 with AAC audio.

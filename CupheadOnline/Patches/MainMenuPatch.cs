@@ -65,4 +65,22 @@ namespace CupheadOnline.Patches
             return _titleAnimField.GetValue(instance) as GameObject;
         }
     }
+
+    [HarmonyPatch(typeof(StartScreen), "Update")]
+    public static class StartScreenSplashGatePatch
+    {
+        static bool Prefix()
+        {
+            return !StartupSplashPlayer.IsBlockingGame;
+        }
+    }
+
+    [HarmonyPatch(typeof(StartScreenAudio), "Update")]
+    public static class StartScreenAudioSplashGatePatch
+    {
+        static bool Prefix()
+        {
+            return !StartupSplashPlayer.IsBlockingGame;
+        }
+    }
 }
