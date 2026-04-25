@@ -132,6 +132,8 @@ namespace CupheadOnline.UI
             new Dictionary<Type, FieldInfo[]>(128);
         private static readonly Dictionary<Type, FieldInfo> HpFieldCache =
             new Dictionary<Type, FieldInfo>(64);
+        private static readonly Dictionary<Type, bool> TimelineBackedHealthCache =
+            new Dictionary<Type, bool>(64);
         private static readonly List<BossSnapshot> ScratchSnapshots =
             new List<BossSnapshot>(16);
         private static readonly List<PropertyHandle> ScratchProperties =
@@ -585,13 +587,17 @@ namespace CupheadOnline.UI
                 if (IsIgnoredHealthOwner(descriptor))
                     continue;
 
+                bool timelineBackedHealth = HasTimelineBackedDamageEvent(type);
+                if (!timelineBackedHealth)
+                    continue;
+
                 float hp;
                 try { hp = (float)hpField.GetValue(behaviour); }
                 catch { continue; }
                 if (hp <= 0f)
                     continue;
 
-                if (hp < MinInterestingHealth && !IsBossLike(descriptor))
+                if (hp < MinInterestingHealth && !timelineBackedHealth)
                     continue;
 
                 var handle = new DamageReceiverHandle
@@ -796,6 +802,32 @@ namespace CupheadOnline.UI
 
             HpFieldCache[type] = null;
             return null;
+        }
+
+        private static bool HasTimelineBackedDamageEvent(Type type)
+        {
+            if (type == null)
+                return false;
+
+            bool cached;
+            if (TimelineBackedHealthCache.TryGetValue(type, out cached))
+                return cached;
+
+            bool found = false;
+            Type current = type;
+            while (current != null)
+            {
+                if (current.GetEvent("OnDamageTakenEvent", AnyInstance) != null)
+                {
+                    found = true;
+                    break;
+                }
+
+                current = current.BaseType;
+            }
+
+            TimelineBackedHealthCache[type] = found;
+            return found;
         }
 
         private static bool IsBattleActive()
