@@ -29,8 +29,8 @@ Steam P2P multiplayer for Cuphead, plus a desktop installer that handles the mod
 - In-game session panel with `F8` toggle for quick diagnostics and session state
 - Optional boss health bars during battle levels, using Cuphead's live boss health data when available
 - Battle Assist HUD with a live fight timer, deaths, retries, parries, and optional boss HP multiplier readout
-- QoL hotkeys: `F6` quick resync, `F7` boss health bars, `F9` copy diagnostics, and `F10` Battle Assist HUD
-- Local dev simulation with `F11`, letting one PC test the mod's remote-input path by driving Player Two through CupHeads instead of needing a second Steam player
+- QoL hotkeys: `F6` quick resync, `F7` boss health bars, `F9` copy diagnostics, `F10` Battle Assist HUD, and `F11` Dev Lab
+- Local Dev Lab with a same-PC simulator, letting one PC test the mod's remote-input path by driving Player Two through CupHeads instead of needing a second Steam player
 - Optional startup splash video with audio, skip support, and a configurable Cuphead-style film-static overlay
 - Optional boss HP scaling per extra active player, configurable in BepInEx and disabled by default
 - Recovery and resync tools for active sessions, including exported diagnostics bundles
@@ -45,7 +45,7 @@ Steam P2P multiplayer for Cuphead, plus a desktop installer that handles the mod
 - Clipboard helpers for lobby IDs and diagnostics
 - Better retry and reconnect guidance when Steam sessions fail
 - Toggleable gameplay HUD features through the BepInEx config, including boss bars, Battle Assist, QoL hotkeys, and the session panel
-- Toggleable networking and dev-test settings through the BepInEx config, including latency-friendly damage and the F11 local dev-session hotkey
+- Toggleable networking and dev-test settings through the BepInEx config, including latency-friendly damage and the F11 Dev Lab hotkey
 - Toggleable startup splash settings through the BepInEx config, including volume, skip support, and static overlay intensity
 
 ### Experimental Expanded Sessions
@@ -146,17 +146,26 @@ Internal scenes such as Porkrind's shop use the same routing path: the host rema
 
 ## Local Dev Testing
 
-Press `F11` to toggle a same-PC local dev session. This does not create a Steam lobby. Instead, it marks Player One as the local host player and Player Two as the network-controlled participant, then feeds Player Two through CupHeads' `RemoteInputDriver`.
+Press `F11` to open the CupHeads Dev Lab. This does not create a Steam lobby. Instead, it can mark Player One as the local host player and Player Two as the network-controlled participant, then feed Player Two through CupHeads' `RemoteInputDriver`.
 
 Recommended solo test flow:
 
-1. Launch Cuphead and press `F11` before opening a save or level.
-2. Start a normal save file.
-3. Use Player One controls for Cuphead.
-4. Use Player Two/controller bindings for Mugman.
-5. Press `F11` again to stop the dev session.
+1. Launch Cuphead and press `F11`.
+2. Choose `START + OPEN SAVE SELECT`.
+3. Pick a normal save file.
+4. Use Player One controls for Cuphead.
+5. Use Player Two/controller bindings for Mugman.
+6. Press `F11` again and choose `STOP SIMULATOR` when finished.
+
+The Dev Lab also has `START SIMULATOR`, `COPY DIAGNOSTICS`, and `CLOSE` actions. `START SIMULATOR` keeps you in the current scene, while `START + OPEN SAVE SELECT` starts the simulator and jumps to the save-select flow.
 
 This mode is meant for auditing movement, map interactions, equip/shop menus, death/revive behavior, and boss fights without waiting for a second tester. It is not a substitute for a real Steam P2P test because it does not simulate network jitter, packet loss, Steam lobby joining, or two separate machines.
+
+Two-window testing note:
+
+1. Two Cuphead windows on one Steam account are not a reliable proof of Steam P2P because both processes share one Steam identity.
+2. Use two Windows users/Steam accounts or a second PC for true P2P testing.
+3. If the Dev Lab fails to spawn or control Player Two, the bug is in local spawn/input routing. If Dev Lab works but Steam multiplayer fails, the bug is probably lobby, packet, or scene-sync related.
 
 ## Authority Model
 

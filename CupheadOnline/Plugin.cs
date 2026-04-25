@@ -93,11 +93,11 @@ namespace CupheadOnline
             _cfgShowBattleAssistHud = Config.Bind("UI", "ShowBattleAssistHud", true,
                 "Show a compact battle timer/stats HUD during battle levels.");
             _cfgEnableQoLHotkeys = Config.Bind("Controls", "EnableQoLHotkeys", true,
-                "Enable CupHeads hotkeys: F6 resync, F7 boss bars, F9 copy diagnostics, F10 battle HUD.");
+                "Enable CupHeads hotkeys: F6 resync, F7 boss bars, F9 copy diagnostics, F10 battle HUD, F11 dev lab.");
             _cfgLatencyFriendlyDamage = Config.Bind("Networking", "LatencyFriendlyDamage", true,
                 "Trust each peer for damage to their own player body. The host still owns scenes, saves, boss state, RNG, and progression.");
             _cfgEnableLocalDevSession = Config.Bind("Debug", "EnableLocalDevSessionHotkey", true,
-                "Enable F11 local dev simulation: Player One is local, Player Two is driven through CupHeads' remote-input path on the same PC.");
+                "Enable the F11 dev lab and local simulation: Player One is local, Player Two is driven through CupHeads' remote-input path on the same PC.");
             _cfgEnableStartupSplash = Config.Bind("StartupSplash", "EnableStartupSplash", true,
                 "Play BepInEx/plugins/CupheadOnline/Assets/CupHeadsIntro.mp4 over the game's startup/title intro.");
             _cfgStartupSplashAllowSkip = Config.Bind("StartupSplash", "AllowSkip", true,
@@ -246,6 +246,7 @@ namespace CupheadOnline
 
             Log.LogInfo("[Plugin] Patch pass complete.");
             SessionPausePanel.Ensure();
+            LocalDevMenu.Ensure();
         }
 
         IEnumerator Start()
@@ -344,6 +345,7 @@ namespace CupheadOnline
             BossHealthScaler.Reset();
             BossHealthBarOverlay.Hide();
             BattleAssistHud.Hide();
+            LocalDevMenu.Hide();
             StartupSplashPlayer.Hide();
         }
 
@@ -420,6 +422,6 @@ namespace CupheadOnline
     {
         public const string GUID    = "com.cupheadonline.mod";
         public const string NAME    = "CupHeads";
-        public const string VERSION = "1.2.22";
+        public const string VERSION = "1.2.23";
     }
 }

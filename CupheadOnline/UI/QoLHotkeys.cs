@@ -48,7 +48,7 @@ namespace CupheadOnline.UI
             if (Input.GetKeyDown(KeyCode.F11))
             {
                 _lastHotkeyAt = Time.unscaledTime;
-                LocalDevSession.Toggle();
+                LocalDevMenu.Toggle();
             }
         }
 

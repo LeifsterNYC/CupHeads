@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.23 - 2026-04-25
+
+- Replaced the hidden F11 local-dev toggle with an in-game CupHeads Dev Lab overlay.
+- Added Dev Lab buttons for starting the same-PC multiplayer simulator, starting and opening save select, stopping the simulator, copying diagnostics, and closing the panel.
+- Added clearer in-game notes that true two-window Steam P2P testing still needs two Steam identities or a second PC.
+- Updated local dev messaging so testers can distinguish same-PC spawn/input bugs from real Steam lobby/scene-sync bugs.
+
 ## v1.2.22 - 2026-04-25
 
 - Added latency-friendly co-op damage: each peer now owns damage to their own player body while the host still owns scenes, saves, boss state, RNG, and progression.
