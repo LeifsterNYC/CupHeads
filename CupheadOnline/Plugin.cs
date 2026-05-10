@@ -184,63 +184,36 @@ namespace CupheadOnline
             PatchTracked(harmony, registeredPatchTypes, typeof(PlayerManagerCountPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(PlayerManagerGetAllPlayersPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(PlayerManagerBothPlayersActivePatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(CupheadLevelCameraPathPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelEnemySpawnerPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelPitMoveTriggerPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ForestPlatformingLevelChomperSpawnerPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(AbstractPlatformingLevelEnemyTriggerPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(LevelPitExtraParticipantPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelShootingEnemyRangePatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelShootingEnemyVolumesPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelShootingEnemyShootPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(MountainPlatformingLevelElevatorHandlerStartPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(CircusPlatformingLevelTrampolineSleepPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(MountainPlatformingLevelScaleStartPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(SnowCultLevelPlatformExtraBouncePatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlatformingLevelExitExtraParticipantPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(LevelCoinExtraCollectorPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PirateLevelBarrelExtraTriggerPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(AbstractLevelInteractiveEntityExtraPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(HouseLevelExitExtraPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RobotLevelRobotHeadPrimaryPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessKnightLevelInitPatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessKnightCheckTauntPatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessKnightShouldBackDashPatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessBishopFixedUpdatePatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessBishopFindVerticalAnglePatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ChessBishopFindHorizontalPositionPatch3P));
-            PatchTracked(harmony, registeredPatchTypes, typeof(SallyMeteorParryPatch3P));
+            // Gameplay-sync hardcoded patches removed — these were the upstream's broken
+            // boss/enemy/projectile/scene-trigger sync. Our own sync layer (cuphead-coop's
+            // ScenePuppetry/EntitySync/ProjectileSync) is added below and replaces them.
+            // (Kept for reference: CupheadLevelCameraPathPatch, PlatformingLevelEnemySpawnerPatch,
+            //  ChessKnight*3P, BossSceneHardcodePatches, etc — all stayed as compiled but
+            //  unregistered.)
+            // 3+ player + per-boss hardcoded patches removed (RobotLevelRobotHeadPrimaryPatch,
+            // ChessKnight*3P, ChessBishop*3P, SallyMeteorParryPatch3P) — out of scope for our
+            // 2-player target.
 
-            // Movement / input sync
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerMotorPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(MapPlayerMotorPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(MapPlayerAnimationPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RewiredPlayerGetAxisPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RewiredPlayerGetButtonPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RewiredPlayerGetButtonDownPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RewiredPlayerGetButtonUpPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(CupheadInputDisplayForButtonPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerInputAxisPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerInputAxisIntPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerInputButtonPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerInputButtonDownPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerInputButtonUpPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(ParryPatch));
+            // Movement / input sync — REMOVED. Upstream's PlayerMotorPatch / RewiredPlayerGet*
+            // / PlayerInputButton* patches did motor bypass + input forwarding. Replaced by
+            // our cuphead-coop sync layer registered below.
 
-            // Damage authority
-            PatchTracked(harmony, registeredPatchTypes, typeof(PlayerDamagePatch));
+            // Damage authority — REMOVED. PlayerDamagePatch's split-authority model isn't
+            // needed; our sync streams HP from host instead.
 
-            // Scene transitions
+            // Scene transitions — KEEP. Lobby + scene-load handshake stays.
             PatchTracked(harmony, registeredPatchTypes, typeof(SceneLoaderLevelsPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(SceneLoaderScenesPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(SlotSelectEnterGamePatch));
+
+            // Stats patches — KEEP if they're cosmetic only (death count, retry count,
+            // parry count). These don't drive gameplay sync.
             PatchTracked(harmony, registeredPatchTypes, typeof(LevelPlayerDeathStatsPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(SceneLoaderRetryStatsPatch));
             PatchTracked(harmony, registeredPatchTypes, typeof(LevelPlayerParryStatsPatch));
 
-            // Deterministic RNG
-            PatchTracked(harmony, registeredPatchTypes, typeof(RandPatch));
-            PatchTracked(harmony, registeredPatchTypes, typeof(RandIntPatch));
+            // Deterministic RNG — REMOVED. RandPatch was dead code anyway (Cuphead's Rand
+            // class only has Bool/PosOrNeg, not GetValue(float,float) which the patch targets).
 
             AuditPatchCoverage(registeredPatchTypes);
 
@@ -251,11 +224,9 @@ namespace CupheadOnline
 
         IEnumerator Start()
         {
-            // Keep VideoPlayer startup out of Awake; Unity 2017 can behave badly
-            // if media decoding starts while the chainloader is still patching.
+            // Splash video disabled — user didn't ask for it. Keep coroutine empty for now in
+            // case another component depends on the Start lifecycle.
             yield return null;
-            yield return null;
-            StartupSplashPlayer.TryShow();
         }
 
         static void PatchTracked(Harmony harmony, HashSet<Type> registeredPatchTypes, Type patchType)
@@ -315,20 +286,20 @@ namespace CupheadOnline
             Net?.Poll();
             MultiplayerSession.EnsureCupheadMultiplayerState();
             LocalDevSession.Update();
-            ClientInputFramePump.Update();
-            LoadoutReplicator.Update();
-            EnemySyncManager.HostTick();
-            ExtraRemoteAvatarManager.Update();
-            ExtraParticipantDamageBridge.Update();
-            ExtraParticipantTracker.Update();
-            ExtraParticipantReviveVisuals.Update();
-            PlayerColorSync.Update();
-            QoLHotkeys.Tick();
-            BossHealthScaler.Update();
-            BossHealthBarOverlay.Tick();
-            BattleAssistHud.Tick();
-            SessionSync.Update();
-            SessionPausePanel.Ensure();
+            // ClientInputFramePump.Update();    // upstream gameplay-sync — replaced by our cuphead-coop
+            LoadoutReplicator.Update();          // lobby loadout (weapons/charms) — kept
+            // EnemySyncManager.HostTick();      // upstream broken enemy sync
+            // ExtraRemoteAvatarManager.Update();// 3+ player feature, out of scope
+            // ExtraParticipantDamageBridge.Update();
+            // ExtraParticipantTracker.Update();
+            // ExtraParticipantReviveVisuals.Update();
+            PlayerColorSync.Update();            // lobby cosmetic — kept
+            QoLHotkeys.Tick();                   // F8/F11 hotkeys — kept
+            // BossHealthScaler.Update();        // user explicitly didn't ask for this
+            // BossHealthBarOverlay.Tick();      // user said: "weird health bar no one asked for"
+            // BattleAssistHud.Tick();           // not asked for
+            SessionSync.Update();                // lobby/session state — kept
+            SessionPausePanel.Ensure();          // pause panel — kept
         }
 
         void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -342,11 +313,9 @@ namespace CupheadOnline
             Net?.Dispose();
             MultiplayerSession.End();
             PlayerColorSync.Reset();
-            BossHealthScaler.Reset();
-            BossHealthBarOverlay.Hide();
-            BattleAssistHud.Hide();
+            // BossHealthScaler / BossHealthBarOverlay / BattleAssistHud / StartupSplashPlayer
+            // disabled — see Update() for rationale.
             LocalDevMenu.Hide();
-            StartupSplashPlayer.Hide();
         }
 
         public static bool ToggleBossHealthBars()
