@@ -1,0 +1,3 @@
+# Force LF line endings on shell scripts so macOS bash doesn't choke on CRLF
+# when the repo is cloned/extracted on a Windows host before being moved to Mac.
+*.sh text eol=lf
