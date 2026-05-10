@@ -215,6 +215,10 @@ namespace CupheadOnline
             // Deterministic RNG — REMOVED. RandPatch was dead code anyway (Cuphead's Rand
             // class only has Bool/PosOrNeg, not GetValue(float,float) which the patch targets).
 
+            // Phase 1 gameplay sync: remote player motor bypass + state stream on Steam P2P
+            // channel 7 (separate from upstream's lobby protocol on channel 0).
+            CupheadOnline.Coop.CoopBootstrap.RegisterPatches(harmony, registeredPatchTypes);
+
             AuditPatchCoverage(registeredPatchTypes);
 
             Log.LogInfo("[Plugin] Patch pass complete.");
@@ -300,6 +304,7 @@ namespace CupheadOnline
             // BattleAssistHud.Tick();           // not asked for
             SessionSync.Update();                // lobby/session state — kept
             SessionPausePanel.Ensure();          // pause panel — kept
+            CupheadOnline.Coop.CoopBootstrap.Tick(UnityEngine.Time.unscaledDeltaTime);
         }
 
         void OnSceneLoaded(Scene scene, LoadSceneMode mode)

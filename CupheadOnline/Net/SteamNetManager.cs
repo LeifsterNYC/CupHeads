@@ -35,6 +35,7 @@ namespace CupheadOnline.Net
         public bool IsSteamReady => _steamReady;
         public bool IsConnected  => _state == NetState.Connected;
         public bool IsHost       => _isHost;
+        public CSteamID RemoteSteamId => _peerId;  // 2-player peer's SteamID; CSteamID.Nil pre-connect.
         public int  Latency      { get; private set; }
         public string SteamUnavailableStatus => _steamUnavailableStatus;
         public string LastStatusMessage => _lastStatusMessage;
