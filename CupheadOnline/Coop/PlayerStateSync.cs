@@ -36,6 +36,13 @@ namespace CupheadOnline.Coop
         private static float _sinceLastSend;
         private static uint _localTickCounter;
 
+        // Diagnostic counters surfaced to the BepInEx log every N seconds so we can tell
+        // whether the sync layer is actually firing in-game.
+        private static int _sentCount;
+        private static int _recvCount;
+        private static float _sinceLastDiag;
+        private static bool _firstTickLogged;
+
         public static bool TryGetLatest(byte playerId, out PlayerStatePacket pkt)
             => _latest.TryGetValue(playerId, out pkt);
 
@@ -54,8 +61,35 @@ namespace CupheadOnline.Coop
         /// </summary>
         public static void Tick(float dt)
         {
+            // Throttled diagnostic — fires once per second whether or not we're in a
+            // session, so a "no logs" symptom is distinguishable from "Tick never runs".
+            _sinceLastDiag += dt;
+            if (_sinceLastDiag >= 1f)
+            {
+                _sinceLastDiag = 0f;
+                Plugin.Log.LogInfo(string.Format(
+                    "[Coop] diag: sessionActive={0} isHost={1} netConnected={2} canSend={3} peer={4} sent/s={5} recv/s={6}",
+                    MultiplayerSession.IsActive,
+                    MultiplayerSession.IsHost,
+                    Plugin.Net != null && Plugin.Net.IsConnected,
+                    CoopTransport.CanSend,
+                    (Plugin.Net != null && Plugin.Net.RemoteSteamId != Steamworks.CSteamID.Nil)
+                        ? Plugin.Net.RemoteSteamId.m_SteamID.ToString() : "(none)",
+                    _sentCount, _recvCount));
+                _sentCount = 0;
+                _recvCount = 0;
+            }
+
             if (!MultiplayerSession.IsActive) return;
             if (!CoopTransport.CanSend) return;
+
+            if (!_firstTickLogged)
+            {
+                _firstTickLogged = true;
+                Plugin.Log.LogInfo(string.Format(
+                    "[Coop] sync ACTIVE — local={0} remote={1} channel={2}",
+                    LocalPlayerId, RemotePlayerId, CoopProtocol.ChannelIndex));
+            }
 
             // 1. Inbound — drain any received state packets.
             CoopTransport.Poll(OnPacket);
@@ -151,6 +185,7 @@ namespace CupheadOnline.Coop
                 AnimStateHash = animHash
             };
             CoopTransport.Send(pkt);
+            _sentCount++;
         }
 
         private static void OnPacket(Steamworks.CSteamID sender, BinaryReader r)
@@ -169,6 +204,7 @@ namespace CupheadOnline.Coop
                         return;
                     _lastTick[p.PlayerId] = p.Tick;
                     _latest[p.PlayerId] = p;
+                    _recvCount++;
                     break;
                 }
                 default:
